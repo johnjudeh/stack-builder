@@ -3,6 +3,26 @@
 # Constants - Declare these as constants
 
 version='1.0.0'
+verbose_mode='false'
+
+env_var_venv_root='VENV_ROOT'
+env_var_ba_root='BA_ROOT'
+env_var_ba_node='BA_NODE_ROOT'
+env_var_kodiak_root='KODIAK_ROOT'
+env_var_om_root='OM_ROOT'
+env_var_ba_venv='BA_VENV'
+env_var_kodiak_venv='KODIAK_VENV'
+env_var_ba_nenv='BA_NENV'
+env_var_om_nenv='OM_NENV'
+env_var_ba_db='BA_DB'
+env_var_ba_celery_app='BA_CELERY_APP'
+env_var_tmux_lock_channel='TMUX_LOCK_CHANNEL'
+env_vars_required=( \
+	"$env_var_venv_root" "$env_var_ba_root" "$env_var_ba_node" "$env_var_kodiak_root" "$env_var_om_root" "$env_var_ba_venv" \
+	"$env_var_kodiak_venv" "$env_var_ba_nenv" "$env_var_om_nenv" "$env_var_ba_db" "$env_var_ba_celery_app" \
+	"$env_var_tmux_lock_channel" \
+)
+
 
 command_init='init'
 command_build='build'
@@ -12,11 +32,13 @@ commands=( "$command_init" "$command_build" "$command_cleanup" )
 option_help='--help'
 option_help_short='-h'
 option_version='--version'
-option_version_short='-v'
-base_options=( "$option_help" "$option_help_short" "$option_version" "$option_version_short" )
+option_check='--check'
+option_verbose='--verbose'
+option_verbose_short='-v'
+base_options=( "$option_help" "$option_help_short" "$option_version" "$option_check" "$option_verbose" "$option_verbose_short")
 
-usage="usage: om [$option_help|$option_help_short] [$option_version|$option_version_short] <command> [<args>]"
-usage_help="$usage
+usage_message="usage: om [$option_help|$option_help_short] [$option_version] [$option_verbose|$option_verbose_short] <command> [<args>]"
+usage_help_message="$usage_message
 
 There are a number of possible commands:
 
@@ -34,6 +56,8 @@ There are a number of possible commands:
 
 			om $command_cleanup [--last-snapshot|-ls]
 "
+check_message='Running environment check...'
+verbose_message='Verbose mode switched on'
 
 # Command Functions
 
@@ -64,13 +88,48 @@ function handle_base_options() {
 	local option="$1"
 
 	case $option in
-		$option_version | $option_version_short)
+		$option_help | $option_help_short)
+			printf "$usage_help_message\n"
+			;;
+		$option_verbose | $option_verbose_short)
+			printf "$verbose_message\n"
+			verbose_mode='true'
+			;;
+		$option_version)
 			printf "$version\n"
 			;;
-		$option_help | $option_help_short)
-			printf "$usage_help\n"
-			;;
+		$option_check)
+			printf "$check_message\n"
+			check_env $option_verbose_short || return 1
 	esac
+
+	return 0
+}
+
+function check_env() {
+	local vars_missing='false'
+
+	if [[ $verbose_mode = 'true' ]] || ( [[ $# -eq 1 ]] && [[ $1 = $option_verbose_short ]] ); then
+		local verbose='true'
+	fi
+
+	for evn in "${env_vars_required[@]}"; do
+		if [[ -z ${!evn} ]]; then
+			local vars_missing='true'
+			echo "'$evn' is not set"
+		else
+			if [[ verbose = 'true' ]]; then
+				echo "$evn is set as: ${!evn}"
+			fi
+		fi
+	done
+
+	if [[ "$vars_missing" = 'true' ]]; then
+		printf "The above environment variables must be set to run the program\n"
+		return 1
+	elif [[ $verbose = 'true' ]]; then
+		printf "OK\n"
+	fi
 
 	return 0
 }
@@ -121,7 +180,7 @@ function handle_command() {
 
 if [[ $# -eq 0 ]]; then
 	# Not enough arguments passed
-	printf "$usage_help\n"
+	printf "$usage_help_message\n"
 	exit 1
 
 elif is_valid_base_option "$1" "${base_options[@]}"; then
@@ -130,12 +189,13 @@ elif is_valid_base_option "$1" "${base_options[@]}"; then
 	exit 0
 
 elif is_valid_command "$1" "${commands[@]}"; then
+	check_env || exit 1
 	handle_command "$@" || exit 1
-	exit 1
+	exit 0
 
 else
 	printf "Unknown argument: $1\n"
-	printf "$usage\n"
+	printf "$usage_message\n"
 	exit 1
 
 fi
