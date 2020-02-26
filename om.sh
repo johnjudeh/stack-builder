@@ -58,6 +58,7 @@ There are a number of possible commands:
 "
 check_message='Running environment check...'
 verbose_message='Verbose mode switched on'
+not_enough_args_message='Not enough arguments passed'
 
 # Command Functions
 
@@ -86,6 +87,7 @@ function is_valid_command() {
 
 function handle_base_options() {
 	local option="$1"
+	local command="$2"
 
 	case "$option" in
 		"$option_help" | "$option_help_short")
@@ -94,6 +96,11 @@ function handle_base_options() {
 		"$option_verbose" | "$option_verbose_short")
 			printf "$verbose_message\n"
 			verbose_mode='true'
+			if [[ -z "$command" ]]; then
+				printf "$not_enough_args_message\n\n"
+				printf "$usage_help_message\n"
+				return 1
+			fi
 			;;
 		"$option_version")
 			printf "$version\n"
@@ -184,12 +191,13 @@ function handle_command() {
 
 if [[ $# -eq 0 ]]; then
 	# Not enough arguments passed
+	printf "$not_enough_args_message\n\n"
 	printf "$usage_help_message\n"
 	exit 1
 
 elif is_valid_base_option "$1" "${base_options[@]}"; then
 	# Command line option passed. Ignores all arguments after
-	handle_base_options "$1" || exit 1
+	handle_base_options "$@" || exit 1
 	exit 0
 
 elif is_valid_command "$1" "${commands[@]}"; then
