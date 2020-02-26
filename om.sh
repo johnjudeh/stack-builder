@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
 
-# Constants - Declare these as constants
+# Constants - TODO: Declare these as constants
 
 version='1.0.0'
 verbose_mode='false'
+
+code_type_py='py'
+code_type_node='node'
 
 env_var_venv_root='VENV_ROOT'
 env_var_ba_root='BA_ROOT'
@@ -143,6 +146,52 @@ function check_env() {
 	fi
 
 	return 0
+}
+
+function activate_code_env() {
+	local code_type="$1"
+	local env_name="$2"
+	local run_install="$3"
+
+	print_title "Loading $code_type environment '$env_name' (with$(if [[ "$run_install" = 'true' ]]; then; ; fi) package install)"
+
+	source "$VENV_ROOT/$code_type/$env_name/bin/activate" || return 1
+
+	if [[ "$run_install" = 'true'  ]]; then
+		case "$code_type" in:
+			"$code_type_py")
+				pip install -r requirements.txt || return 1
+				;;
+			"$code_type_node")
+				npm install || return 1
+				git checkout -- package-lock.json || return 1
+				;;
+		esac
+	fi
+
+	return 0
+}
+
+function change_dir() {
+	local dir_name="$1"
+	print_title "Changing directory to '$dir_name'"
+	cd "$dir_name"
+}
+
+function checkout_git_branch() {
+	local branch_name="$1"
+	print_title "Checking out branch '$branch_name'"
+	git fetch --all
+	git checkout "$branch_name"
+	git pull
+}
+
+# TODO: Update this to print in the way I like
+function print_title() {
+	echo ""
+	echo ""
+	echo $1
+	echo "====================================================="
 }
 
 function init() {
