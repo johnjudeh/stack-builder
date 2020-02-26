@@ -66,7 +66,7 @@ function is_in_array() {
 	local arr=("${@:2}")
 
 	for val in "${arr[@]}"; do
-		if [[ $search = $val ]]; then
+		if [[ "$search" = "$val" ]]; then
 			return 0
 		fi
 	done
@@ -87,39 +87,43 @@ function is_valid_command() {
 function handle_base_options() {
 	local option="$1"
 
-	case $option in
-		$option_help | $option_help_short)
+	case "$option" in
+		"$option_help" | "$option_help_short")
 			printf "$usage_help_message\n"
 			;;
-		$option_verbose | $option_verbose_short)
+		"$option_verbose" | "$option_verbose_short")
 			printf "$verbose_message\n"
 			verbose_mode='true'
 			;;
-		$option_version)
+		"$option_version")
 			printf "$version\n"
 			;;
-		$option_check)
+		"$option_check")
 			printf "$check_message\n"
-			check_env $option_verbose_short || return 1
+			check_env 'true' || return 1
+			;;
 	esac
 
 	return 0
 }
 
 function check_env() {
+	local set_verbose="$1"
+	local verbose='false'
 	local vars_missing='false'
 
-	if [[ $verbose_mode = 'true' ]] || ( [[ $# -eq 1 ]] && [[ $1 = $option_verbose_short ]] ); then
+	if [[ "$verbose_mode" = 'true' ]] || ( [[ $# -eq 1 ]] && [[ "$set_verbose" = 'true' ]] ); then
 		local verbose='true'
+		printf "\n"
 	fi
 
 	for evn in "${env_vars_required[@]}"; do
-		if [[ -z ${!evn} ]]; then
+		if [[ -z "${!evn}" ]]; then
 			local vars_missing='true'
-			echo "'$evn' is not set"
+			printf "'$evn' is not set"
 		else
-			if [[ verbose = 'true' ]]; then
-				echo "$evn is set as: ${!evn}"
+			if [[ "$verbose" = 'true' ]]; then
+				printf "$evn is set as: ${!evn}\n"
 			fi
 		fi
 	done
@@ -127,8 +131,8 @@ function check_env() {
 	if [[ "$vars_missing" = 'true' ]]; then
 		printf "The above environment variables must be set to run the program\n"
 		return 1
-	elif [[ $verbose = 'true' ]]; then
-		printf "OK\n"
+	elif [[ "$verbose" = 'true' ]]; then
+		printf "\nOK\n"
 	fi
 
 	return 0
@@ -160,14 +164,14 @@ function handle_command() {
 
 	shift
 
-	case $command in
-		$command_init)
+	case "$command" in
+		"$command_init")
 			init "$@" || return 1
 			;;
-		$command_build)
+		"$command_build")
 			build "$@" || return 1
 			;;
-		$command_cleanup)
+		"$command_cleanup")
 			cleanup "$@" || return 1
 			;;
 	esac
