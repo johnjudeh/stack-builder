@@ -8,6 +8,17 @@ verbose_mode='false'
 code_type_py='py'
 code_type_node='node'
 
+fm_red="$(tput setaf 1)"
+fm_green="$(tput setaf 2)"
+fm_yellow="$(tput setaf 3)"
+fm_magenta="$(tput setaf 5)"
+fm_cyan="$(tput setaf 6)"
+
+fm_bold="$(tput bold)"
+fm_underline="$(tput smul)"
+
+fm_reset="$(tput sgr0)"
+
 env_var_venv_root='VENV_ROOT'
 env_var_ba_root='BA_ROOT'
 env_var_ba_node='BA_NODE_ROOT'
@@ -122,7 +133,7 @@ function check_env() {
 	local verbose='false'
 	local vars_missing='false'
 
-	if [[ "$verbose_mode" = 'true' ]] || ( [[ $# -eq 1 ]] && [[ "$set_verbose" = 'true' ]] ); then
+	if [[ "$verbose_mode" = 'true' ]] || ( [[ $# -ge 1 ]] && [[ "$set_verbose" = 'true' ]] ); then
 		local verbose='true'
 		printf "\n"
 	fi
@@ -130,19 +141,20 @@ function check_env() {
 	for ev in "${env_vars_required[@]}"; do
 		if [[ -z "${!ev+x}" ]]; then
 			local vars_missing='true'
-			printf "'$evn' is not set"
+			printf "Checking '$ev'... ${fm_red}UNSET${fm_reset}\n"
 		else
 			if [[ "$verbose" = 'true' ]]; then
-				printf "$evn is set as: ${!evn}\n"
+				printf "Checking '$ev'... ${fm_green}OK${fm_reset}\n"
 			fi
 		fi
 	done
 
 	if [[ "$vars_missing" = 'true' ]]; then
-		printf "The above environment variables must be set to run the program\n"
+		printf "\n${fm_red}CHECK FAILED${fm_reset}\n"
+		printf "Please set the ${fm_red}UNSET${fm_reset} environment variables above before running the program\n"
 		return 1
 	elif [[ "$verbose" = 'true' ]]; then
-		printf "\nOK\n"
+		printf "\n${fm_green}CHECK PASSED${fm_reset}\n"
 	fi
 
 	return 0
