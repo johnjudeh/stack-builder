@@ -127,8 +127,8 @@ function check_env() {
 		printf "\n"
 	fi
 
-	for evn in "${env_vars_required[@]}"; do
-		if [[ -z "${!evn}" ]]; then
+	for ev in "${env_vars_required[@]}"; do
+		if [[ -z "${!ev+x}" ]]; then
 			local vars_missing='true'
 			printf "'$evn' is not set"
 		else
@@ -158,7 +158,7 @@ function activate_code_env() {
 	source "$VENV_ROOT/$code_type/$env_name/bin/activate" || return 1
 
 	if [[ "$run_install" = 'true'  ]]; then
-		case "$code_type" in:
+		case "$code_type" in
 			"$code_type_py")
 				pip install -r requirements.txt || return 1
 				;;
