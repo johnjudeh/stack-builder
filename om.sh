@@ -13,11 +13,12 @@ fm_green="$(tput setaf 2)"
 fm_yellow="$(tput setaf 3)"
 fm_magenta="$(tput setaf 5)"
 fm_cyan="$(tput setaf 6)"
-
 fm_bold="$(tput bold)"
 fm_underline="$(tput smul)"
-
 fm_reset="$(tput sgr0)"
+
+style_command_title='cmd'
+stlye_error='err'
 
 env_var_venv_root='VENV_ROOT'
 env_var_ba_root='BA_ROOT'
@@ -41,7 +42,8 @@ env_vars_required=( \
 command_init='init'
 command_build='build'
 command_cleanup='cleanup'
-commands=( "$command_init" "$command_build" "$command_cleanup" )
+command_run='run'
+commands=( "$command_init" "$command_build" "$command_cleanup" "$command_run")
 
 option_help='--help'
 option_help_short='-h'
@@ -49,10 +51,14 @@ option_version='--version'
 option_check='--check'
 option_verbose='--verbose'
 option_verbose_short='-v'
-base_options=( "$option_help" "$option_help_short" "$option_version" "$option_check" "$option_verbose" "$option_verbose_short")
+allowed_options_base=( "$option_help" "$option_help_short" "$option_version" "$option_check" "$option_verbose" "$option_verbose_short")
 
-usage_message="usage: om [$option_help|$option_help_short] [$option_version] [$option_verbose|$option_verbose_short] <command> [<args>]"
-usage_help_message="$usage_message
+option_branch='--branch'
+option_branch_short='-b'
+run_command_allowed_options=( "$option_branch" "$option_branch_short" )
+
+message_usage="usage: om [$option_help|$option_help_short] [$option_version] [$option_verbose|$option_verbose_short] <command> [<args>]"
+message_usage_help="$message_usage
 
 There are a number of possible commands:
 
@@ -69,12 +75,98 @@ There are a number of possible commands:
 	$command_cleanup		Cleans up project to last time init was run
 
 			om $command_cleanup [--last-snapshot|-ls]
+
+	$command_run		Loads project environment and runs required command in it
+
+			om $command_run <project> [$option_branch|$option_branch_short <branch>] <command> [<args>]
+
 "
-check_message='Running environment check...'
-verbose_message='Verbose mode switched on'
-not_enough_args_message='Not enough arguments passed'
+message_check='Running environment check...'
+message_verbose='Verbose mode switched on'
+message_not_enough_args='Not enough arguments passed'
+message_incorrect_num_of_args='Incorrect number of arguments passed'
+message_unknown_project='Unknown project'
+
+project_ba='bankangle'
+project_ba_short='ba'
+project_ba_node='bankangle-node'
+project_ba_node_short='ba-node'
+project_om='om-elements'
+project_om_short='om'
+project_kod='kodiak'
+project_kod_short='kod'
+projects=( \
+	"$project_ba" "$project_ba_short" \
+	"$project_ba_node" "$project_ba_node_short" \
+	"$project_om" "$project_om_short" \
+	"$project_kod" "$project_kod_short" \
+)
+
 
 # Command Functions
+
+function get_dir() {
+	local project="$1"
+
+	case "$project" in
+		"$project_ba"|"$project_ba_short")
+			printf "$BA_ROOT"
+			;;
+		"$project_ba_node"|"$project_ba_node_short")
+			printf "$BA_NODE_ROOT"
+			;;
+		"$project_om"|"$project_om_short")
+			printf "$OM_ROOT"
+			;;
+		"$project_kod"|"$project_kod_short")
+			printf "$KODIAK_ROOT"
+			;;
+	esac
+
+	return 0
+}
+
+function get_code_type() {
+	local project="$1"
+
+	case "$project" in
+		"$project_ba"|"$project_ba_short")
+			printf "$code_type_py"
+			;;
+		"$project_ba_node"|"$project_ba_node_short")
+			printf "$code_type_node"
+			;;
+		"$project_om"|"$project_om_short")
+			printf "$code_type_node"
+			;;
+		"$project_kod"|"$project_kod_short")
+			printf "$code_type_py"
+			;;
+	esac
+
+	return 0
+}
+
+function get_code_env_name() {
+	local project="$1"
+
+	case "$project" in
+		"$project_ba"|"$project_ba_short")
+			printf "$BA_VENV"
+			;;
+		"$project_ba_node"|"$project_ba_node_short")
+			printf "$BA_NENV"
+			;;
+		"$project_om"|"$project_om_short")
+			printf "$OM_NENV"
+			;;
+		"$project_kod"|"$project_kod_short")
+			printf "$KODIAK_VENV"
+			;;
+	esac
+
+	return 0
+}
 
 function is_in_array() {
 	local search="$1"
@@ -91,12 +183,23 @@ function is_in_array() {
 
 function is_valid_base_option() {
 	local search="$1"
-	is_in_array "$search" "${base_options[@]}"
+	is_in_array "$search" "${allowed_options_base[@]}"
 }
 
 function is_valid_command() {
 	local search="$1"
 	is_in_array "$search" "${commands[@]}"
+}
+
+function is_valid_project() {
+	local search="$1"
+	is_in_array "$search" "${projects[@]}"
+}
+
+function is_valid_run_command_option() {
+	local search="$1"
+	is_in_array "$search" "${[@]}"
+
 }
 
 function handle_base_options() {
@@ -105,14 +208,14 @@ function handle_base_options() {
 
 	case "$option" in
 		"$option_help" | "$option_help_short")
-			printf "$usage_help_message\n"
+			printf "$message_usage_help\n"
 			;;
 		"$option_verbose" | "$option_verbose_short")
-			printf "$verbose_message\n"
+			printf "$message_verbose\n"
 			verbose_mode='true'
 			if [[ -z "$command" ]]; then
-				printf "$not_enough_args_message\n\n"
-				printf "$usage_help_message\n"
+				printf "$message_not_enough_args\n\n"
+				printf "$message_usage_help\n"
 				return 1
 			fi
 			;;
@@ -120,7 +223,7 @@ function handle_base_options() {
 			printf "$version\n"
 			;;
 		"$option_check")
-			printf "$check_message\n"
+			printf "$message_check\n"
 			check_env 'true' || return 1
 			;;
 	esac
@@ -160,13 +263,32 @@ function check_env() {
 	return 0
 }
 
+function print_format() {
+	local type="$1"
+	local msg="$2"
+
+	case "$type" in
+		"$style_command_title")
+			printf "${fm_yellow}==>${fm_reset} $2\n"
+			printf "%s\n" "------------------------------------------------------------" 
+			;;
+		"$style_error")
+			printf "ERR! $2\n"
+			;;
+	esac
+
+	return 0
+}
+
 function activate_code_env() {
 	local code_type="$1"
 	local env_name="$2"
 	local run_install="$3"
+	local title="Loading $code_type environment '$env_name'$([[ "$run_install" != 'true' ]] ||  printf ' (with package install)')"
 
-	print_title "Loading $code_type environment '$env_name' (with$(if [[ "$run_install" = 'true' ]]; then; ; fi) package install)"
+	print_format "$style_command_title" "$title"
 
+	#TODO: Figure out how to export this to the shell that called it
 	source "$VENV_ROOT/$code_type/$env_name/bin/activate" || return 1
 
 	if [[ "$run_install" = 'true'  ]]; then
@@ -186,24 +308,62 @@ function activate_code_env() {
 
 function change_dir() {
 	local dir_name="$1"
-	print_title "Changing directory to '$dir_name'"
+	print_format "$style_command_title" "Changing directory to '$dir_name'"
 	cd "$dir_name"
 }
 
 function checkout_git_branch() {
 	local branch_name="$1"
-	print_title "Checking out branch '$branch_name'"
+	print_format "$style_command_title" "Checking out branch '$branch_name'"
 	git fetch --all
 	git checkout "$branch_name"
 	git pull
 }
 
-# TODO: Update this to print in the way I like
-function print_title() {
-	echo ""
-	echo ""
-	echo $1
-	echo "====================================================="
+function run_command() {
+	print_format "$style_command_title" "Running command '$*'"
+	$@
+}
+
+function run() {
+	local project="$1"
+
+	if [[ $# -lt 2 ]]; then
+		print_format "$style_error" "$message_incorrect_num_of_args"
+		return 1
+	fi
+
+	if [[ "$2" = "$option_branch" ]] || [[ "$2" = "$option_branch_short" ]]; then
+		if [[ $# -lt 4 ]]; then
+			print_format "$style_error" "$message_incorrect_num_of_args"
+			return 1
+		else
+			local branch="$3"
+			shift 3
+		fi
+	else
+		shift
+	fi
+
+	if is_valid_project "$project"; then
+		local project_dir="$(get_dir "$project")"
+		local project_code_type="$(get_code_type "$project")"
+		local project_code_env_name="$(get_code_env_name "$project")"
+
+		change_dir "$project_dir" || return 1
+		activate_code_env "$project_code_type" "$project_code_env_name" 'false' || return 1
+
+		if [[ -n "$branch" ]]; then
+			checkout_git_branch "$branch" || return 1
+		fi
+
+		run_command "$@" || return 1
+	else
+		print_format "$style_error" "$message_unknown_project: '$project'"
+		return 1
+	fi
+
+	return 0
 }
 
 function init() {
@@ -242,6 +402,9 @@ function handle_command() {
 		"$command_cleanup")
 			cleanup "$@" || return 1
 			;;
+		"$command_run")
+			run "$@" || return 1
+			;;
 	esac
 
 	return 0
@@ -252,23 +415,23 @@ function handle_command() {
 
 if [[ $# -eq 0 ]]; then
 	# Not enough arguments passed
-	printf "$not_enough_args_message\n\n"
-	printf "$usage_help_message\n"
+	printf "$message_not_enough_args\n\n"
+	printf "$message_usage_help\n"
 	exit 1
 
-elif is_valid_base_option "$1" "${base_options[@]}"; then
+elif is_valid_base_option "$1"; then
 	# Command line option passed. Ignores all arguments after
 	handle_base_options "$@" || exit 1
 	exit 0
 
-elif is_valid_command "$1" "${commands[@]}"; then
+elif is_valid_command "$1"; then
 	check_env || exit 1
 	handle_command "$@" || exit 1
 	exit 0
 
 else
 	printf "Unknown argument: $1\n"
-	printf "$usage_message\n"
+	printf "$message_usage\n"
 	exit 1
 
 fi
