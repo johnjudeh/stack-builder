@@ -58,7 +58,8 @@ readonly command_build='build'
 readonly command_cleanup='cleanup'
 readonly command_run='run'
 readonly command_freeze='freeze'
-readonly commands=( "$command_init" "$command_build" "$command_cleanup" "$command_run" "$command_freeze" )
+readonly command_restore='restore'
+readonly commands=( "$command_init" "$command_build" "$command_cleanup" "$command_run" "$command_freeze" "$command_restore" )
 
 readonly option_help='--help'
 readonly option_help_short='-h'
@@ -105,6 +106,9 @@ There are a number of possible commands:
 
 			om $command_freeze <project> [$option_branch|$option_branch_short <branch>]
 
+	$command_restore		Restores project database to last time freeze was run
+
+			om $command_restore <project>
 "
 readonly message_check='Running environment check...'
 readonly message_verbose='Verbose mode switched on'
@@ -353,6 +357,51 @@ function create_clean_db() {
 	return 0
 }
 
+function restore_from_clean_db() {
+	local db_name="$1"
+	local delete_clean_db="$2"
+	local clean_db_name="${db_name}_${clean_db_suffix}"
+
+	print_format "$style_command_title" "Restoring database '$db_name' from '$clean_db_name'"
+
+	local base_db_exists="$( psql -tAc "SELECT 1 FROM pg_database WHERE datname = '$db_name'" )"
+	local clean_db_exists="$( psql -tAc "SELECT 1 FROM pg_database WHERE datname = '$clean_db_name'" )"
+
+	if [[ "$clean_db_exists" != '1' ]]; then
+		print_format "$style_error" "$message_db_does_not_exist: '$clean_db_name'"
+		return 1
+	fi
+
+	# Stop processes connected to db quickly
+	psql -c "
+		SELECT pg_terminate_backend(pg_stat_activity.pid)
+		FROM pg_stat_activity
+		WHERE pg_stat_activity.datname = '$db_name'
+		AND pid <> pg_backend_pid();
+	" || return 1
+
+	# Drop altered db
+	if [[ "$base_db_exists" = '1'  ]]; then
+		psql -c "
+			DROP DATABASE \"$db_name\";
+		" || return 1
+	fi
+
+	# Restore clean database to old name
+	psql -c "
+		CREATE DATABASE \"$db_name\" WITH TEMPLATE \"$clean_db_name\";
+	" || return 1
+
+	# Drop clean db if flag is set
+	if [ "$delete_clean_db" = 'true' ]; then
+		psql -c "
+			DROP DATABASE \"$clean_db_name\";
+		" || return 1
+	fi
+
+	return 0
+}
+
 function django_migrate_db() {
 	print_format "$style_command_title" 'Django migrate database'
 	python manage.py migrate
@@ -527,6 +576,30 @@ function freeze() {
 	return 0
 }
 
+function restore() {
+	local project="$1"
+
+	if [[ $# -eq 0 ]]; then
+		print_format "$style_error" "$message_not_enough_args"
+		return 1
+	fi
+
+	if is_valid_project_for_freeze_command "$project"; then
+		local project_db_name="$(get_project_db_name "$project")"
+		restore_from_clean_db "$project_db_name" 'false'
+
+	elif is_valid_project "$project"; then
+		print_format "$style_error" "$message_command_does_not_support_project: '$project'"
+		return 1
+
+	else
+		print_format "$style_error" "$message_unknown_project: '$project'"
+		return 1
+	fi
+
+	return 0
+}
+
 function init() {
 	echo 'In the init command'
 	echo
@@ -568,6 +641,9 @@ function handle_command() {
 			;;
 		"$command_freeze")
 			freeze "$@" || return 1
+			;;
+		"$command_restore")
+			restore "$@" || return 1
 			;;
 	esac
 
