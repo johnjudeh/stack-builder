@@ -1,64 +1,63 @@
 #!/usr/bin/env bash
 
-# Constants - TODO: Declare these as constants
+#### Constants ####
 
-version='1.0.0'
-verbose_mode='false'
+readonly version='1.0.0'
 
-code_type_py='py'
-code_type_node='node'
+readonly code_type_py='py'
+readonly code_type_node='node'
 
-fm_red="$(tput setaf 1)"
-fm_green="$(tput setaf 2)"
-fm_yellow="$(tput setaf 3)"
-fm_magenta="$(tput setaf 5)"
-fm_cyan="$(tput setaf 6)"
-fm_bold="$(tput bold)"
-fm_underline="$(tput smul)"
-fm_reset="$(tput sgr0)"
+readonly fm_red="$(tput setaf 1)"
+readonly fm_green="$(tput setaf 2)"
+readonly fm_yellow="$(tput setaf 3)"
+readonly fm_magenta="$(tput setaf 5)"
+readonly fm_cyan="$(tput setaf 6)"
+readonly fm_bold="$(tput bold)"
+readonly fm_underline="$(tput smul)"
+readonly fm_reset="$(tput sgr0)"
 
-style_command_title='cmd'
-stlye_error='err'
+readonly style_command_title='cmd'
+readonly stlye_error='err'
 
-env_var_venv_root='VENV_ROOT'
-env_var_ba_root='BA_ROOT'
-env_var_ba_node='BA_NODE_ROOT'
-env_var_kodiak_root='KODIAK_ROOT'
-env_var_om_root='OM_ROOT'
-env_var_ba_venv='BA_VENV'
-env_var_kodiak_venv='KODIAK_VENV'
-env_var_ba_nenv='BA_NENV'
-env_var_om_nenv='OM_NENV'
-env_var_ba_db='BA_DB'
-env_var_ba_celery_app='BA_CELERY_APP'
-env_var_tmux_lock_channel='TMUX_LOCK_CHANNEL'
-env_vars_required=( \
+readonly env_var_venv_root='VENV_ROOT'
+readonly env_var_ba_root='BA_ROOT'
+readonly env_var_ba_node='BA_NODE_ROOT'
+readonly env_var_kodiak_root='KODIAK_ROOT'
+readonly env_var_om_root='OM_ROOT'
+readonly env_var_ba_venv='BA_VENV'
+readonly env_var_kodiak_venv='KODIAK_VENV'
+readonly env_var_ba_nenv='BA_NENV'
+readonly env_var_om_nenv='OM_NENV'
+readonly env_var_ba_db='BA_DB'
+readonly env_var_ba_celery_app='BA_CELERY_APP'
+readonly env_var_tmux_lock_channel='TMUX_LOCK_CHANNEL'
+readonly env_vars_required=( \
 	"$env_var_venv_root" "$env_var_ba_root" "$env_var_ba_node" "$env_var_kodiak_root" "$env_var_om_root" "$env_var_ba_venv" \
 	"$env_var_kodiak_venv" "$env_var_ba_nenv" "$env_var_om_nenv" "$env_var_ba_db" "$env_var_ba_celery_app" \
 	"$env_var_tmux_lock_channel" \
 )
 
 
-command_init='init'
-command_build='build'
-command_cleanup='cleanup'
-command_run='run'
-commands=( "$command_init" "$command_build" "$command_cleanup" "$command_run")
+readonly command_init='init'
+readonly command_build='build'
+readonly command_cleanup='cleanup'
+readonly command_run='run'
+readonly commands=( "$command_init" "$command_build" "$command_cleanup" "$command_run")
 
-option_help='--help'
-option_help_short='-h'
-option_version='--version'
-option_check='--check'
-option_verbose='--verbose'
-option_verbose_short='-v'
-allowed_options_base=( "$option_help" "$option_help_short" "$option_version" "$option_check" "$option_verbose" "$option_verbose_short")
+readonly option_help='--help'
+readonly option_help_short='-h'
+readonly option_version='--version'
+readonly option_check='--check'
+readonly option_verbose='--verbose'
+readonly option_verbose_short='-v'
+readonly allowed_options_base=( "$option_help" "$option_help_short" "$option_version" "$option_check" "$option_verbose" "$option_verbose_short")
 
-option_branch='--branch'
-option_branch_short='-b'
-run_command_allowed_options=( "$option_branch" "$option_branch_short" )
+readonly option_branch='--branch'
+readonly option_branch_short='-b'
+readonly run_command_allowed_options=( "$option_branch" "$option_branch_short" )
 
-message_usage="usage: om [$option_help|$option_help_short] [$option_version] [$option_verbose|$option_verbose_short] <command> [<args>]"
-message_usage_help="$message_usage
+readonly message_usage="usage: om [$option_help|$option_help_short] [$option_version] [$option_verbose|$option_verbose_short] <command> [<args>]"
+readonly message_usage_help="$message_usage
 
 There are a number of possible commands:
 
@@ -81,21 +80,21 @@ There are a number of possible commands:
 			om $command_run <project> [$option_branch|$option_branch_short <branch>] <command> [<args>]
 
 "
-message_check='Running environment check...'
-message_verbose='Verbose mode switched on'
-message_not_enough_args='Not enough arguments passed'
-message_incorrect_num_of_args='Incorrect number of arguments passed'
-message_unknown_project='Unknown project'
+readonly message_check='Running environment check...'
+readonly message_verbose='Verbose mode switched on'
+readonly message_not_enough_args='Not enough arguments passed'
+readonly message_incorrect_num_of_args='Incorrect number of arguments passed'
+readonly message_unknown_project='Unknown project'
 
-project_ba='bankangle'
-project_ba_short='ba'
-project_ba_node='bankangle-node'
-project_ba_node_short='ba-node'
-project_om='om-elements'
-project_om_short='om'
-project_kod='kodiak'
-project_kod_short='kod'
-projects=( \
+readonly project_ba='bankangle'
+readonly project_ba_short='ba'
+readonly project_ba_node='bankangle-node'
+readonly project_ba_node_short='ba-node'
+readonly project_om='om-elements'
+readonly project_om_short='om'
+readonly project_kod='kodiak'
+readonly project_kod_short='kod'
+readonly projects=( \
 	"$project_ba" "$project_ba_short" \
 	"$project_ba_node" "$project_ba_node_short" \
 	"$project_om" "$project_om_short" \
@@ -103,7 +102,12 @@ projects=( \
 )
 
 
-# Command Functions
+#### GLOBAL VARIABLES ####
+
+verbose_mode='false'
+
+
+#### FUNCTIONS ####
 
 function get_dir() {
 	local project="$1"
@@ -411,7 +415,7 @@ function handle_command() {
 }
 
 
-# Main script
+#### MAIN SCRIPT ####
 
 if [[ $# -eq 0 ]]; then
 	# Not enough arguments passed
