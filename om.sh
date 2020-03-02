@@ -300,7 +300,6 @@ function handle_base_options() {
 			printf "$version\n"
 			;;
 		"$option_check")
-			printf "$message_check\n"
 			check_env 'true' || return 1
 			;;
 	esac
@@ -315,7 +314,7 @@ function check_env() {
 
 	if [[ "$verbose_mode" = 'true' ]] || ( [[ $# -ge 1 ]] && [[ "$set_verbose" = 'true' ]] ); then
 		local verbose='true'
-		printf "\n"
+		print_format "$style_command_title" "$message_check"
 	fi
 
 	for ev in "${env_vars_required[@]}"; do
@@ -434,20 +433,23 @@ if [[ $# -eq 0 ]]; then
 	printf "$message_usage_help\n"
 	exit 1
 
-elif is_valid_base_option "$1"; then
-	# Command line option passed. Ignores all arguments after
-	handle_base_options "$@" || exit 1
-	exit 0
-
-elif is_valid_command "$1"; then
-	check_env || exit 1
-	handle_command "$@" || exit 1
-	exit 0
-
 else
-	printf "Unknown argument: $1\n"
-	printf "$message_usage\n"
-	exit 1
+	for arg in "$@"; do
+		if is_valid_base_option "$arg"; then
+			# Command line option passed. Ignores all arguments after
+			handle_base_options "$@" || exit 1
+			shift
 
+		elif is_valid_command "$arg"; then
+			check_env || exit 1
+			handle_command "$@" || exit 1
+			exit 0
+
+		else
+			printf "Unknown argument: $1\n"
+			printf "$message_usage\n"
+			exit 1
+		fi
+	done
 fi
 
