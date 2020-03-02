@@ -29,20 +29,36 @@ readonly env_var_kodiak_venv='KODIAK_VENV'
 readonly env_var_ba_nenv='BA_NENV'
 readonly env_var_om_nenv='OM_NENV'
 readonly env_var_ba_db='BA_DB'
+readonly env_var_kodiak_db='KODIAK_DB'
 readonly env_var_ba_celery_app='BA_CELERY_APP'
 readonly env_var_tmux_lock_channel='TMUX_LOCK_CHANNEL'
 readonly env_vars_required=( \
 	"$env_var_venv_root" "$env_var_ba_root" "$env_var_ba_node" "$env_var_kodiak_root" "$env_var_om_root" "$env_var_ba_venv" \
-	"$env_var_kodiak_venv" "$env_var_ba_nenv" "$env_var_om_nenv" "$env_var_ba_db" "$env_var_ba_celery_app" \
+	"$env_var_kodiak_venv" "$env_var_ba_nenv" "$env_var_om_nenv" "$env_var_ba_db" "$env_var_kodiak_db" "$env_var_ba_celery_app" \
 	"$env_var_tmux_lock_channel" \
 )
 
+readonly project_ba='bankangle'
+readonly project_ba_short='ba'
+readonly project_ba_node='bankangle-node'
+readonly project_ba_node_short='ba-node'
+readonly project_om='om-elements'
+readonly project_om_short='om'
+readonly project_kod='kodiak'
+readonly project_kod_short='kod'
+readonly projects=( \
+	"$project_ba" "$project_ba_short" \
+	"$project_ba_node" "$project_ba_node_short" \
+	"$project_om" "$project_om_short" \
+	"$project_kod" "$project_kod_short" \
+)
 
 readonly command_init='init'
 readonly command_build='build'
 readonly command_cleanup='cleanup'
 readonly command_run='run'
-readonly commands=( "$command_init" "$command_build" "$command_cleanup" "$command_run")
+readonly command_freeze='freeze'
+readonly commands=( "$command_init" "$command_build" "$command_cleanup" "$command_run" "$command_freeze" )
 
 readonly option_help='--help'
 readonly option_help_short='-h'
@@ -55,6 +71,12 @@ readonly allowed_options_base=( "$option_help" "$option_help_short" "$option_ver
 readonly option_branch='--branch'
 readonly option_branch_short='-b'
 readonly run_command_allowed_options=( "$option_branch" "$option_branch_short" )
+
+readonly freeze_command_default_branch='master'
+readonly freeze_command_projects=( \
+	"$project_ba" "$project_ba_short" \
+	"$project_kod" "$project_kod_short" \
+)
 
 readonly message_usage="usage: om [$option_help|$option_help_short] [$option_version] [$option_verbose|$option_verbose_short] <command> [<args>]"
 readonly message_usage_help="$message_usage
@@ -79,27 +101,21 @@ There are a number of possible commands:
 
 			om $command_run <project> [$option_branch|$option_branch_short <branch>] <command> [<args>]
 
+	$command_freeze		Freeze database for project. Uses the master branch by default
+
+			om $command_freeze <project> [$option_branch|$option_branch_short <branch>]
+
 "
 readonly message_check='Running environment check...'
 readonly message_verbose='Verbose mode switched on'
 readonly message_not_enough_args='Not enough arguments passed'
+readonly message_unknown_arg='Unknown argument'
 readonly message_incorrect_num_of_args='Incorrect number of arguments passed'
 readonly message_unknown_project='Unknown project'
+readonly message_command_does_not_support_project='This command does not support the project'
+readonly message_db_does_not_exist='Database does not exist'
 
-readonly project_ba='bankangle'
-readonly project_ba_short='ba'
-readonly project_ba_node='bankangle-node'
-readonly project_ba_node_short='ba-node'
-readonly project_om='om-elements'
-readonly project_om_short='om'
-readonly project_kod='kodiak'
-readonly project_kod_short='kod'
-readonly projects=( \
-	"$project_ba" "$project_ba_short" \
-	"$project_ba_node" "$project_ba_node_short" \
-	"$project_om" "$project_om_short" \
-	"$project_kod" "$project_kod_short" \
-)
+readonly clean_db_suffix='clean'
 
 
 #### GLOBAL VARIABLES ####
@@ -109,7 +125,7 @@ verbose_mode='false'
 
 #### MAPPING FUNCTIONS ####
 
-function get_dir() {
+function get_project_dir() {
 	local project="$1"
 
 	case "$project" in
@@ -130,7 +146,7 @@ function get_dir() {
 	return 0
 }
 
-function get_code_type() {
+function get_project_code_type() {
 	local project="$1"
 
 	case "$project" in
@@ -151,7 +167,7 @@ function get_code_type() {
 	return 0
 }
 
-function get_code_env_name() {
+function get_project_code_env_name() {
 	local project="$1"
 
 	case "$project" in
@@ -166,6 +182,36 @@ function get_code_env_name() {
 			;;
 		"$project_kod"|"$project_kod_short")
 			printf "$KODIAK_VENV"
+			;;
+	esac
+
+	return 0
+}
+
+function get_project_db_name() {
+	local project="$1"
+
+	case "$project" in
+		"$project_ba"|"$project_ba_short")
+			printf "$BA_DB"
+			;;
+		"$project_kod"|"$project_kod_short")
+			printf "$KODIAK_DB"
+			;;
+	esac
+
+	return 0
+}
+
+function get_project_requires_load_termsheet_templates() {
+	local project="$1"
+
+	case "$project" in
+		"$project_ba"|"$project_ba_short")
+			printf 'true'
+			;;
+		"$project_kod"|"$project_kod_short")
+			printf 'false'
 			;;
 	esac
 
@@ -201,6 +247,11 @@ function is_valid_command() {
 function is_valid_project() {
 	local search="$1"
 	is_in_array "$search" "${projects[@]}"
+}
+
+function is_valid_project_for_freeze_command() {
+	local search="$1"
+	is_in_array "$search" "${freeze_command_projects[@]}"
 }
 
 function is_valid_run_command_option() {
@@ -274,7 +325,43 @@ function run_command() {
 	$@
 }
 
+function create_clean_db() {
+	local db_name="$1"
+	local clean_db_name="${db_name}_${clean_db_suffix}"
 
+	print_format "$style_command_title" "Creating clean copy of database '$db_name' as '$clean_db_name'"
+
+	# Create clean copy of database, overwriting it if it already exists
+	local base_db_exists="$( psql -tAc "SELECT 1 FROM pg_database WHERE datname = '$db_name'" )"
+	local clean_db_exists="$( psql -tAc "SELECT 1 FROM pg_database WHERE datname = '$clean_db_name'" )"
+
+	if [[ "$base_db_exists" != "1" ]]; then
+		print_format "$style_error" "$message_db_does_not_exist: '$db_name'"
+		return 1
+	fi
+
+	if [[ "$clean_db_exists" = "1" ]]; then
+		psql -c "
+			DROP DATABASE \"$clean_db_name\";
+		" || return 1
+	fi
+
+	psql -c "
+		CREATE DATABASE \"$clean_db_name\" WITH TEMPLATE \"$db_name\";
+	" || return 1
+
+	return 0
+}
+
+function django_migrate_db() {
+	print_format "$style_command_title" 'Django migrate database'
+	python manage.py migrate
+}
+
+function load_termsheet_templates() {
+	print_format "$style_command_title" 'Loading termsheet templates'
+	python manage.py load_termsheet_templates --noinput
+}
 
 
 #### COMMAND-SPECIFIC FUNCTIONS ####
@@ -360,18 +447,78 @@ function run() {
 	fi
 
 	if is_valid_project "$project"; then
-		local project_dir="$(get_dir "$project")"
-		local project_code_type="$(get_code_type "$project")"
-		local project_code_env_name="$(get_code_env_name "$project")"
+		local project_dir="$(get_project_dir "$project")"
+		local project_code_type="$(get_project_code_type "$project")"
+		local project_code_env_name="$(get_project_code_env_name "$project")"
 
 		change_dir "$project_dir" || return 1
-		activate_code_env "$project_code_type" "$project_code_env_name" 'false' || return 1
 
 		if [[ -n "$branch" ]]; then
 			checkout_git_branch "$branch" || return 1
 		fi
 
+		activate_code_env "$project_code_type" "$project_code_env_name" 'false' || return 1
+
 		run_command "$@" || return 1
+	else
+		print_format "$style_error" "$message_unknown_project: '$project'"
+		return 1
+	fi
+
+	return 0
+}
+
+function freeze() {
+	local project="$1"
+
+	if [[ $# -eq 0 ]]; then
+		print_format "$style_error" "$message_not_enough_args"
+		return 1
+	fi
+
+	if [[ $# -ge 2 ]]; then
+		if [[ "$2" = "$option_branch" ]] || [[ "$2" = "$option_branch_short" ]]; then
+			if [[ $# -ne 3 ]]; then
+				print_format "$style_error" "$message_incorrect_num_of_args"
+				return 1
+			else
+				local branch="$3"
+			fi
+		else
+			print_format "$style_rror" "$message_unknown_arg: $2"
+			printf "$message_usage\n"
+			return 1
+		fi
+	else
+		local branch="$freeze_command_default_branch"
+	fi
+
+	if is_valid_project_for_freeze_command "$project"; then
+		local project_dir="$(get_project_dir "$project")"
+		local project_code_type="$(get_project_code_type "$project")"
+		local project_code_env_name="$(get_project_code_env_name "$project")"
+		local project_requires_load_termsheet_templates=$(get_project_requires_load_termsheet_templates "$project")
+		local project_db_name="$(get_project_db_name "$project")"
+
+		change_dir "$project_dir" || return 1
+
+		if [[ -n "$branch" ]]; then
+			checkout_git_branch "$branch" || return 1
+		fi
+
+		activate_code_env "$project_code_type" "$project_code_env_name" 'true' || return 1
+		django_migrate_db
+
+		if [[ "$project_requires_load_termsheet_templates" = 'true' ]]; then
+			load_termsheet_templates
+		fi
+
+		create_clean_db "$project_db_name"
+
+	elif is_valid_project "$project"; then
+		print_format "$style_error" "$message_command_does_not_support_project: '$project'"
+		return 1
+
 	else
 		print_format "$style_error" "$message_unknown_project: '$project'"
 		return 1
@@ -418,6 +565,9 @@ function handle_command() {
 			;;
 		"$command_run")
 			run "$@" || return 1
+			;;
+		"$command_freeze")
+			freeze "$@" || return 1
 			;;
 	esac
 
