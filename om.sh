@@ -53,13 +53,11 @@ readonly projects=( \
 	"$project_kod" "$project_kod_short" \
 )
 
-readonly command_init='init'
-readonly command_build='build'
-readonly command_cleanup='cleanup'
-readonly command_run='run'
 readonly command_freeze='freeze'
 readonly command_restore='restore'
-readonly commands=( "$command_init" "$command_build" "$command_cleanup" "$command_run" "$command_freeze" "$command_restore" )
+readonly command_build='build'
+readonly command_run='run'
+readonly commands=( "$command_freeze" "$command_restore" "$command_build" "$command_run" )
 
 readonly option_help='--help'
 readonly option_help_short='-h'
@@ -88,24 +86,6 @@ readonly message_usage_help="$message_usage
 
 There are a number of possible commands:
 
-	$command_init		Updates project for specified branches and saves a version of the database
-
-			om $command_init <ba-branch> [--om=<om-branch>] [--kod=<kodiaik-branch>]
-
-
-	$command_build		Builds the origin markets stack with the specified branches
-
-			om $command_build <ba-branch> [--om=<om-branch>] [--kod=<kodiaik-branch>]
-
-
-	$command_cleanup		Cleans up project to last time init was run
-
-			om $command_cleanup [--last-snapshot|-ls]
-
-	$command_run		Loads project environment and runs required command in it
-
-			om $command_run <project> [$option_branch|$option_branch_short <branch>] <command> [<args>]
-
 	$command_freeze		Freeze database for project. Uses the master branch by default
 
 			om $command_freeze <project> [$option_branch|$option_branch_short <branch>]
@@ -114,6 +94,15 @@ There are a number of possible commands:
 			removes clean database after successful restore
 
 			om $command_restore <project> [$option_delete|$option_delete_short]
+
+	$command_build		Builds the origin markets stack with the specified branches
+
+			om $command_build <ba-branch> [--om=<om-branch>] [--kod=<kodiaik-branch>]
+
+	$command_run		Loads project environment and runs required command in it
+
+			om $command_run <project> [$option_branch|$option_branch_short <branch>] <command> [<args>]
+
 "
 readonly message_check='Running environment check...'
 readonly message_verbose='Verbose mode switched on'
@@ -491,54 +480,6 @@ function check_env() {
 	return 0
 }
 
-function run() {
-	local project="$1"
-
-	if [[ $# -lt 2 ]]; then
-		print_format "$style_error" "$message_incorrect_num_of_args"
-		return 1
-	fi
-
-	if is_valid_run_command_option "$2"; then
-		local option="$2"
-
-		case "$option" in
-			"$option_branch"|"$option_branch_short")
-				if [[ $# -lt 4 ]]; then
-					print_format "$style_error" "$message_incorrect_num_of_args"
-					return 1
-				else
-					local branch="$3"
-					shift 3
-				fi
-				;;
-		esac
-	else
-		shift
-	fi
-
-	if is_valid_project "$project"; then
-		local project_dir="$(get_project_dir "$project")"
-		local project_code_type="$(get_project_code_type "$project")"
-		local project_code_env_name="$(get_project_code_env_name "$project")"
-
-		change_dir "$project_dir" || return 1
-
-		if [[ -n "$branch" ]]; then
-			checkout_git_branch "$branch" || return 1
-		fi
-
-		activate_code_env "$project_code_type" "$project_code_env_name" 'false' || return 1
-
-		run_command "$@" || return 1
-	else
-		print_format "$style_error" "$message_unknown_project: '$project'"
-		return 1
-	fi
-
-	return 0
-}
-
 function freeze() {
 	local project="$1"
 
@@ -645,22 +586,56 @@ function restore() {
 	return 0
 }
 
-function init() {
-	echo 'In the init command'
-	echo
-	echo "Args passed: \$1: $1, \$2: $2, \$3: $3"
+function run() {
+	local project="$1"
+
+	if [[ $# -lt 2 ]]; then
+		print_format "$style_error" "$message_incorrect_num_of_args"
+		return 1
+	fi
+
+	if is_valid_run_command_option "$2"; then
+		local option="$2"
+
+		case "$option" in
+			"$option_branch"|"$option_branch_short")
+				if [[ $# -lt 4 ]]; then
+					print_format "$style_error" "$message_incorrect_num_of_args"
+					return 1
+				else
+					local branch="$3"
+					shift 3
+				fi
+				;;
+		esac
+	else
+		shift
+	fi
+
+	if is_valid_project "$project"; then
+		local project_dir="$(get_project_dir "$project")"
+		local project_code_type="$(get_project_code_type "$project")"
+		local project_code_env_name="$(get_project_code_env_name "$project")"
+
+		change_dir "$project_dir" || return 1
+
+		if [[ -n "$branch" ]]; then
+			checkout_git_branch "$branch" || return 1
+		fi
+
+		activate_code_env "$project_code_type" "$project_code_env_name" 'false' || return 1
+
+		run_command "$@" || return 1
+	else
+		print_format "$style_error" "$message_unknown_project: '$project'"
+		return 1
+	fi
+
 	return 0
 }
 
 function build() {
 	echo 'In the build command'
-	echo
-	echo "Args passed: \$1: $1, \$2: $2, \$3: $3"
-	return 0
-}
-
-function cleanup() {
-	echo 'In the cleanup command'
 	echo
 	echo "Args passed: \$1: $1, \$2: $2, \$3: $3"
 	return 0
@@ -672,23 +647,17 @@ function handle_command() {
 	shift
 
 	case "$command" in
-		"$command_init")
-			init "$@" || return 1
-			;;
-		"$command_build")
-			build "$@" || return 1
-			;;
-		"$command_cleanup")
-			cleanup "$@" || return 1
-			;;
-		"$command_run")
-			run "$@" || return 1
-			;;
 		"$command_freeze")
 			freeze "$@" || return 1
 			;;
 		"$command_restore")
 			restore "$@" || return 1
+			;;
+		"$command_build")
+			build "$@" || return 1
+			;;
+		"$command_run")
+			run "$@" || return 1
 			;;
 	esac
 
