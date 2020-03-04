@@ -73,6 +73,10 @@ readonly option_branch='--branch'
 readonly option_branch_short='-b'
 readonly run_command_allowed_options=( "$option_branch" "$option_branch_short" )
 
+readonly option_delete='--delete'
+readonly option_delete_short='-d'
+readonly restore_command_allowed_options=( "$option_delete" "$option_delete_short" )
+
 readonly freeze_command_default_branch='master'
 readonly freeze_command_projects=( \
 	"$project_ba" "$project_ba_short" \
@@ -106,9 +110,10 @@ There are a number of possible commands:
 
 			om $command_freeze <project> [$option_branch|$option_branch_short <branch>]
 
-	$command_restore		Restores project database to last time freeze was run
+	$command_restore		Restores project database to last time the freeze command was run. Optionally
+			removes clean database after successful restore
 
-			om $command_restore <project>
+			om $command_restore <project> [$option_delete|$option_delete_short]
 "
 readonly message_check='Running environment check...'
 readonly message_verbose='Verbose mode switched on'
@@ -260,7 +265,13 @@ function is_valid_project_for_freeze_command() {
 
 function is_valid_run_command_option() {
 	local search="$1"
-	is_in_array "$search" "${[@]}"
+	is_in_array "$search" "${run_command_allowed_options[@]}"
+
+}
+
+function is_valid_restore_command_option() {
+	local search="$1"
+	is_in_array "$search" "${restore_command_allowed_options[@]}"
 
 }
 
@@ -394,6 +405,7 @@ function restore_from_clean_db() {
 
 	# Drop clean db if flag is set
 	if [ "$delete_clean_db" = 'true' ]; then
+		print_format "$style_command_title" "Deleting clean database '$clean_db_name' after successful restore"
 		psql -c "
 			DROP DATABASE \"$clean_db_name\";
 		" || return 1
@@ -578,15 +590,32 @@ function freeze() {
 
 function restore() {
 	local project="$1"
+	local delete_db='false'
 
 	if [[ $# -eq 0 ]]; then
 		print_format "$style_error" "$message_not_enough_args"
 		return 1
 	fi
 
+	if [[ $# -ge 2 ]]; then
+		if is_valid_restore_command_option "$2"; then
+			local option="$2"
+
+			case "$option" in
+				"$option_delete"|"$option_delete_short")
+					local delete_db='true'
+					;;
+			esac
+		else
+			print_format "$style_rror" "$message_unknown_arg: $2"
+			printf "$message_usage\n"
+			return 1
+		fi
+	fi
+
 	if is_valid_project_for_freeze_command "$project"; then
 		local project_db_name="$(get_project_db_name "$project")"
-		restore_from_clean_db "$project_db_name" 'false'
+		restore_from_clean_db "$project_db_name" "$delete_db"
 
 	elif is_valid_project "$project"; then
 		print_format "$style_error" "$message_command_does_not_support_project: '$project'"
