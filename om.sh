@@ -71,10 +71,10 @@ readonly allowed_options_base=( "$option_help" "$option_help_short" "$option_ver
 
 readonly option_branch='--branch'
 readonly option_branch_short='-b'
-readonly run_command_allowed_options=( "$option_branch" "$option_branch_short" )
-
 readonly option_delete='--delete'
 readonly option_delete_short='-d'
+readonly run_command_allowed_options=( "$option_branch" "$option_branch_short" )
+readonly freeze_command_allowed_options=( "$option_branch" "$option_branch_short" )
 readonly restore_command_allowed_options=( "$option_delete" "$option_delete_short" )
 
 readonly freeze_command_default_branch='master'
@@ -266,13 +266,16 @@ function is_valid_project_for_freeze_command() {
 function is_valid_run_command_option() {
 	local search="$1"
 	is_in_array "$search" "${run_command_allowed_options[@]}"
+}
 
+function is_valid_freeze_command_option() {
+	local search="$1"
+	is_in_array "$search" "${freeze_command_allowed_options[@]}"
 }
 
 function is_valid_restore_command_option() {
 	local search="$1"
 	is_in_array "$search" "${restore_command_allowed_options[@]}"
-
 }
 
 function print_format() {
@@ -330,9 +333,10 @@ function change_dir() {
 function checkout_git_branch() {
 	local branch_name="$1"
 	print_format "$style_command_title" "Checking out branch '$branch_name'"
-	git fetch --all
-	git checkout "$branch_name"
-	git pull
+	git fetch --all || return 1
+	git checkout "$branch_name" || return 1
+	git pull || return 1
+	return 0
 }
 
 function run_command() {
@@ -495,14 +499,20 @@ function run() {
 		return 1
 	fi
 
-	if [[ "$2" = "$option_branch" ]] || [[ "$2" = "$option_branch_short" ]]; then
-		if [[ $# -lt 4 ]]; then
-			print_format "$style_error" "$message_incorrect_num_of_args"
-			return 1
-		else
-			local branch="$3"
-			shift 3
-		fi
+	if is_valid_run_command_option "$2"; then
+		local option="$2"
+
+		case "$option" in
+			"$option_branch"|"$option_branch_short")
+				if [[ $# -lt 4 ]]; then
+					print_format "$style_error" "$message_incorrect_num_of_args"
+					return 1
+				else
+					local branch="$3"
+					shift 3
+				fi
+				;;
+		esac
 	else
 		shift
 	fi
@@ -538,13 +548,19 @@ function freeze() {
 	fi
 
 	if [[ $# -ge 2 ]]; then
-		if [[ "$2" = "$option_branch" ]] || [[ "$2" = "$option_branch_short" ]]; then
-			if [[ $# -ne 3 ]]; then
-				print_format "$style_error" "$message_incorrect_num_of_args"
-				return 1
-			else
-				local branch="$3"
-			fi
+		if is_valid_freeze_command_option "$2"; then
+			local option="$2"
+
+			case "$option" in
+				"$option_branch"|"$option_branch_short")
+					if [[ $# -ne 3 ]]; then
+						print_format "$style_error" "$message_incorrect_num_of_args"
+						return 1
+					else
+						local branch="$3"
+					fi
+					;;
+			esac
 		else
 			print_format "$style_rror" "$message_unknown_arg: $2"
 			printf "$message_usage\n"
