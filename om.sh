@@ -102,7 +102,6 @@ There are a number of possible commands:
 	$command_run		Loads project environment and runs required command in it
 
 			om $command_run <project> [$option_branch|$option_branch_short <branch>] <command> [<args>]
-
 "
 readonly message_check='Running environment check...'
 readonly message_verbose='Verbose mode switched on'
