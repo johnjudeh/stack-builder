@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-#### Constants ####
+######## Constants ########
 
 readonly version='1.0.0'
 
@@ -118,12 +118,12 @@ readonly default_tmux_lock_channel='lock'
 
 
 
-#### GLOBAL VARIABLES ####
+######## GLOBAL VARIABLES ########
 
 verbose_mode='false'
 
 
-#### MAPPING FUNCTIONS ####
+######## MAPPING FUNCTIONS ########
 
 function get_project_dir() {
 	local project="$1"
@@ -219,7 +219,7 @@ function get_project_requires_load_termsheet_templates() {
 }
 
 
-#### UTILITY FUNCTIONS ####
+######## UTILITY FUNCTIONS ########
 
 function is_in_array() {
 	local search="$1"
@@ -287,7 +287,7 @@ function print_format() {
 }
 
 
-#### BASE TASK FUNCTIONS ###
+######## BASE TASK FUNCTIONS ########
 
 function activate_code_env() {
 	local code_type="$1"
@@ -485,7 +485,7 @@ function run_command_with_tmux_unlock() {
 }
 
 
-#### COMMAND-SPECIFIC FUNCTIONS ####
+######## COMMAND-SPECIFIC FUNCTIONS ########
 
 function handle_base_options() {
 	local option="$1"
@@ -734,7 +734,7 @@ function handle_command() {
 }
 
 
-#### MAIN SCRIPT ####
+######## MAIN SCRIPT ########
 
 if [[ $# -eq 0 ]]; then
 	# Not enough arguments passed
