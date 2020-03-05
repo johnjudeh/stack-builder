@@ -297,7 +297,7 @@ function activate_code_env() {
 
 	print_format "$style_command_title" "$title"
 
-	#TODO: Figure out how to export this to the shell that called it
+	# TODO: Figure out how to export this to the shell that called it
 	source "$VENV_ROOT/$code_type/$env_name/bin/activate" || return 1
 
 	if [[ "$run_install" = 'true'  ]]; then
@@ -579,6 +579,7 @@ function freeze() {
 	fi
 
 	if is_valid_project_for_freeze_command "$project"; then
+		# TODO: Refactor me out using the base task functions
 		local project_dir="$(get_project_dir "$project")"
 		local project_code_type="$(get_project_code_type "$project")"
 		local project_code_env_name="$(get_project_code_env_name "$project")"
@@ -680,6 +681,7 @@ function run() {
 	fi
 
 	if is_valid_project "$project"; then
+		# TODO: Refactor me out using the base task functions
 		local project_dir="$(get_project_dir "$project")"
 		local project_code_type="$(get_project_code_type "$project")"
 		local project_code_env_name="$(get_project_code_env_name "$project")"
