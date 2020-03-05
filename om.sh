@@ -114,6 +114,8 @@ readonly message_command_does_not_support_project='This command does not support
 readonly message_db_does_not_exist='Database does not exist'
 
 readonly clean_db_suffix='clean'
+readonly default_tmux_lock_channel='lock'
+
 
 
 #### GLOBAL VARIABLES ####
@@ -415,6 +417,71 @@ function django_migrate_db() {
 function load_termsheet_templates() {
 	print_format "$style_command_title" 'Loading termsheet templates'
 	python manage.py load_termsheet_templates --noinput
+}
+
+function django_start_server() {
+	local port="$1"
+	print_format "$style_command_title" "Starting django server on port '$port'"
+	python manage.py runserver "$port"
+}
+
+function django_start_celery() {
+	local app_name="$1"
+	local priority="$2"
+
+	print_format "$style_command_title" "Starting '$app_name' celery worker $(if [[ -n "$priority" ]]; then; printf "($priority)"; fi)"
+
+	if [[ -n "$priority" ]]; then
+		celery -A "$app_name" worker -Q "$priority"
+	else
+		celery -A "$app_name" worker
+	fi
+}
+
+function npm_run_watch() {
+	print_format "$style_command_title" 'Starting npm watch'
+	npm run watch
+}
+
+function goto_project() {
+	local porject="$1"
+	local run_install="$2"
+	local branch="$3"
+	local project_dir="$(get_project_dir "$project")"
+	local project_code_type="$(get_project_code_type "$project")"
+	local project_code_env_name="$(get_project_code_env_name "$project")"
+
+	change_dir "$project_dir" || return 1
+
+	if [[ -n "$branch" ]]; then
+		checkout_git_branch "$branch" || return 1
+	fi
+
+	activate_code_env "$project_code_type" "$project_code_env_name" "$run_install" || return 1
+
+	return 0
+}
+
+function setup_django_branch() {
+	local project="$1"
+	local run_install="$2"
+	local branch="$3"
+	local project_requires_load_termsheet_templates=$(get_project_requires_load_termsheet_templates "$project")
+
+	goto_project "$project" "$run_install" "$branch" || return 1
+	django_migrate_db || retun 1
+
+	if [[ "$project_requires_load_termsheet_templates" = 'true' ]]; then
+		load_termsheet_templates || return 1
+	fi
+
+	return 0
+}
+
+function run_command_with_tmux_unlock() {
+	local tmux_lock_channel="$1"
+	shift
+	$@ && tmux wait-for -S "$tmux_lock_channel"
 }
 
 
