@@ -579,27 +579,9 @@ function freeze() {
 	fi
 
 	if is_valid_project_for_freeze_command "$project"; then
-		# TODO: Refactor me out using the base task functions
-		local project_dir="$(get_project_dir "$project")"
-		local project_code_type="$(get_project_code_type "$project")"
-		local project_code_env_name="$(get_project_code_env_name "$project")"
-		local project_requires_load_termsheet_templates=$(get_project_requires_load_termsheet_templates "$project")
 		local project_db_name="$(get_project_db_name "$project")"
-
-		change_dir "$project_dir" || return 1
-
-		if [[ -n "$branch" ]]; then
-			checkout_git_branch "$branch" || return 1
-		fi
-
-		activate_code_env "$project_code_type" "$project_code_env_name" 'true' || return 1
-		django_migrate_db
-
-		if [[ "$project_requires_load_termsheet_templates" = 'true' ]]; then
-			load_termsheet_templates
-		fi
-
-		create_clean_db "$project_db_name"
+		setup_django_branch "$project" 'true' "$branch" || return 1
+		create_clean_db "$project_db_name" || return 1
 
 	elif is_valid_project "$project"; then
 		print_format "$style_error" "$message_command_does_not_support_project: '$project'"
@@ -640,7 +622,7 @@ function restore() {
 
 	if is_valid_project_for_freeze_command "$project"; then
 		local project_db_name="$(get_project_db_name "$project")"
-		restore_from_clean_db "$project_db_name" "$delete_db"
+		restore_from_clean_db "$project_db_name" "$delete_db" || return 1
 
 	elif is_valid_project "$project"; then
 		print_format "$style_error" "$message_command_does_not_support_project: '$project'"
@@ -681,19 +663,7 @@ function run() {
 	fi
 
 	if is_valid_project "$project"; then
-		# TODO: Refactor me out using the base task functions
-		local project_dir="$(get_project_dir "$project")"
-		local project_code_type="$(get_project_code_type "$project")"
-		local project_code_env_name="$(get_project_code_env_name "$project")"
-
-		change_dir "$project_dir" || return 1
-
-		if [[ -n "$branch" ]]; then
-			checkout_git_branch "$branch" || return 1
-		fi
-
-		activate_code_env "$project_code_type" "$project_code_env_name" 'false' || return 1
-
+		goto_project "$project" 'false' "$branch" || return 1
 		run_command "$@" || return 1
 	else
 		print_format "$style_error" "$message_unknown_project: '$project'"
