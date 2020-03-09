@@ -2,10 +2,13 @@
 
 ######## Constants ########
 
+readonly script_name='om'
 readonly version='1.0.0'
 
-readonly code_type_py='py'
-readonly code_type_node='node'
+readonly virtual_env_type_py='py'
+readonly virtual_env_type_node='node'
+readonly project_type_django='django'
+readonly project_type_node='node'
 
 readonly fm_red="$(tput setaf 1)"
 readonly fm_green="$(tput setaf 2)"
@@ -17,7 +20,7 @@ readonly fm_underline="$(tput smul)"
 readonly fm_reset="$(tput sgr0)"
 
 readonly style_command_title='cmd'
-readonly stlye_error='err'
+readonly style_error='err'
 
 readonly env_var_venv_root='VENV_ROOT'
 readonly env_var_ba_root='BA_ROOT'
@@ -53,11 +56,15 @@ readonly projects=( \
 	"$project_kod" "$project_kod_short" \
 )
 
+readonly port_ba='8000'
+readonly port_kod='8002'
+
 readonly command_freeze='freeze'
 readonly command_restore='restore'
 readonly command_build='build'
 readonly command_run='run'
-readonly commands=( "$command_freeze" "$command_restore" "$command_build" "$command_run" )
+readonly command_scipt_run='script-run'
+readonly commands=( "$command_freeze" "$command_restore" "$command_build" "$command_run" "$command_scipt_run" )
 
 readonly option_help='--help'
 readonly option_help_short='-h'
@@ -71,9 +78,14 @@ readonly option_branch='--branch'
 readonly option_branch_short='-b'
 readonly option_delete='--delete'
 readonly option_delete_short='-d'
-readonly run_command_allowed_options=( "$option_branch" "$option_branch_short" )
+readonly option_om='--om'
+readonly option_om_short='-o'
+readonly option_kod='--kod'
+readonly option_kod_short='-k'
 readonly freeze_command_allowed_options=( "$option_branch" "$option_branch_short" )
 readonly restore_command_allowed_options=( "$option_delete" "$option_delete_short" )
+readonly build_command_allowed_options=( "$option_om" "$option_om_short" "$option_kod" "$option_kod_short" )
+readonly run_command_allowed_options=( "$option_branch" "$option_branch_short" )
 
 readonly freeze_command_default_branch='master'
 readonly freeze_command_projects=( \
@@ -81,27 +93,32 @@ readonly freeze_command_projects=( \
 	"$project_kod" "$project_kod_short" \
 )
 
-readonly message_usage="usage: om [$option_help|$option_help_short] [$option_version] [$option_verbose|$option_verbose_short] <command> [<args>]"
+readonly build_command_project_tags=( \
+	"$project_ba_short" "$project_om_short" "$project_kod_short" \
+)
+
+readonly message_usage="usage: $script_name [$option_help|$option_help_short] [$option_version] [$option_verbose|$option_verbose_short] [$option_check] <command> [<args>]"
 readonly message_usage_help="$message_usage
 
 There are a number of possible commands:
 
 	$command_freeze		Freeze database for project. Uses the master branch by default
 
-			om $command_freeze <project> [$option_branch|$option_branch_short <branch>]
+			$script_name $command_freeze <project> [$option_branch|$option_branch_short <branch>]
 
 	$command_restore		Restores project database to last time the freeze command was run. Optionally
 			removes clean database after successful restore
 
-			om $command_restore <project> [$option_delete|$option_delete_short]
+			$script_name $command_restore <project> [$option_delete|$option_delete_short]
 
-	$command_build		Builds the origin markets stack with the specified branches
+	$command_build		Builds each specified project and its dependant services with the specified
+			branches
 
-			om $command_build <ba-branch> [--om=<om-branch>] [--kod=<kodiaik-branch>]
+			$script_name $command_build <ba-branch> [$option_om|$option_om_short <om-branch>] [$option_kod|$option_kod_short <kodiaik-branch>]
 
 	$command_run		Loads project environment and runs required command in it
 
-			om $command_run <project> [$option_branch|$option_branch_short <branch>] <command> [<args>]
+			$script_name $command_run <project> [$option_branch|$option_branch_short <branch>] <command> [<args>]
 "
 readonly message_check='Running environment check...'
 readonly message_verbose='Verbose mode switched on'
@@ -111,10 +128,22 @@ readonly message_incorrect_num_of_args='Incorrect number of arguments passed'
 readonly message_unknown_project='Unknown project'
 readonly message_command_does_not_support_project='This command does not support the project'
 readonly message_db_does_not_exist='Database does not exist'
+readonly message_multiple_running_tmux_sessions='Multiple running tmux sessions'
+readonly message_function_returned_error='Function returned non-zero value'
 
 readonly clean_db_suffix='clean'
-readonly default_tmux_lock_channel='lock'
+readonly tmux_default_lock_channel='lock'
+readonly tmux_default_window_name='orchestrator'
+readonly tmux_win_name_django_suffix='_django'
+readonly tmux_win_name_celery_suffix='_celery'
+readonly tmux_win_name_npm_watch_suffix='_npm_w'
+readonly sesh_name_sep=';'
+readonly sesh_name_regex="^${script_name}(${sesh_name_sep}($project_ba_short)=([0-9A-z_\-\/]+))?(${sesh_name_sep}($project_om_short)=([0-9A-z_\-\/]+))?(${sesh_name_sep}($project_kod_short)=([0-9A-z_\-\/]+))?$"
 
+readonly file_pattern_py_requirments='*requirements*'
+readonly file_pattern_node_requirements='*package.json*'
+readonly file_pattern_django_migrations='*migrations*'
+readonly file_pattern_ts_templates='*fixtures/termsheet_templates*'
 
 
 ######## GLOBAL VARIABLES ########
@@ -145,28 +174,28 @@ function get_project_dir() {
 	return 0
 }
 
-function get_project_code_type() {
+function get_project_virtual_env_type() {
 	local project="$1"
 
 	case "$project" in
 		"$project_ba"|"$project_ba_short")
-			printf "$code_type_py"
+			printf "$virtual_env_type_py"
 			;;
 		"$project_ba_node"|"$project_ba_node_short")
-			printf "$code_type_node"
+			printf "$virtual_env_type_node"
 			;;
 		"$project_om"|"$project_om_short")
-			printf "$code_type_node"
+			printf "$virtual_env_type_node"
 			;;
 		"$project_kod"|"$project_kod_short")
-			printf "$code_type_py"
+			printf "$virtual_env_type_py"
 			;;
 	esac
 
 	return 0
 }
 
-function get_project_code_env_name() {
+function get_project_virtual_env_name() {
 	local project="$1"
 
 	case "$project" in
@@ -181,6 +210,27 @@ function get_project_code_env_name() {
 			;;
 		"$project_kod"|"$project_kod_short")
 			printf "$KODIAK_VENV"
+			;;
+	esac
+
+	return 0
+}
+
+function get_project_type() {
+	local project="$1"
+
+	case "$project" in
+		"$project_ba"|"$project_ba_short")
+			printf "$project_type_django"
+			;;
+		"$project_ba_node"|"$project_ba_node_short")
+			printf "$project_type_node"
+			;;
+		"$project_om"|"$project_om_short")
+			printf "$project_type_node"
+			;;
+		"$project_kod"|"$project_kod_short")
+			printf "$project_type_django"
 			;;
 	esac
 
@@ -216,6 +266,34 @@ function get_project_requires_load_termsheet_templates() {
 
 	return 0
 }
+
+function get_project_port() {
+	local project="$1"
+
+	case "$project" in
+		"$project_ba"|"$project_ba_short")
+			printf "$port_ba"
+			;;
+		"$project_kod"|"$project_kod_short")
+			printf "$port_kod"
+			;;
+	esac
+
+	return 0
+}
+
+function get_project_celery_app_name() {
+	local project="$1"
+
+	case "$project" in
+		"$project_ba"|"$project_ba_short")
+			printf "$BA_CELERY_APP"
+			;;
+	esac
+
+	return 0
+}
+
 
 
 ######## UTILITY FUNCTIONS ########
@@ -253,6 +331,11 @@ function is_valid_project_for_freeze_command() {
 	is_in_array "$search" "${freeze_command_projects[@]}"
 }
 
+function is_valid_project_tag_for_build_command() {
+	local search="$1"
+	is_in_array "$search" "${build_command_project_tags[@]}"
+}
+
 function is_valid_run_command_option() {
 	local search="$1"
 	is_in_array "$search" "${run_command_allowed_options[@]}"
@@ -268,6 +351,11 @@ function is_valid_restore_command_option() {
 	is_in_array "$search" "${restore_command_allowed_options[@]}"
 }
 
+function is_valid_build_command_option() {
+	local search="$1"
+	is_in_array "$search" "${build_command_allowed_options[@]}"
+}
+
 function print_format() {
 	local type="$1"
 	local msg="$2"
@@ -278,7 +366,7 @@ function print_format() {
 			printf "%s\n" "------------------------------------------------------------" 
 			;;
 		"$style_error")
-			printf "ERR! $2\n"
+			printf "${fm_red}ERR!${fm_reset} $2\n" 1>&2
 			;;
 	esac
 
@@ -301,10 +389,10 @@ function activate_code_env() {
 
 	if [[ "$run_install" = 'true'  ]]; then
 		case "$code_type" in
-			"$code_type_py")
+			"$virtual_env_type_py")
 				pip install -r requirements.txt || return 1
 				;;
-			"$code_type_node")
+			"$virtual_env_type_node")
 				npm install || return 1
 				git checkout -- package-lock.json || return 1
 				;;
@@ -428,7 +516,7 @@ function django_start_celery() {
 	local app_name="$1"
 	local priority="$2"
 
-	print_format "$style_command_title" "Starting '$app_name' celery worker $(if [[ -n "$priority" ]]; then; printf "($priority)"; fi)"
+	print_format "$style_command_title" "Starting '$app_name' celery worker $([[ -z "$priority" ]] || printf "%s" "($priority)")"
 
 	if [[ -n "$priority" ]]; then
 		celery -A "$app_name" worker -Q "$priority"
@@ -447,8 +535,8 @@ function goto_project() {
 	local run_install="$2"
 	local branch="$3"
 	local project_dir="$(get_project_dir "$project")"
-	local project_code_type="$(get_project_code_type "$project")"
-	local project_code_env_name="$(get_project_code_env_name "$project")"
+	local project_code_type="$(get_project_virtual_env_type "$project")"
+	local project_code_env_name="$(get_project_virtual_env_name "$project")"
 
 	change_dir "$project_dir" || return 1
 
@@ -461,26 +549,127 @@ function goto_project() {
 	return 0
 }
 
-function setup_django_branch() {
+function setup_project_branch() {
 	local project="$1"
 	local run_install="$2"
 	local branch="$3"
-	local project_requires_load_termsheet_templates=$(get_project_requires_load_termsheet_templates "$project")
+	# TODO: Potentially rethink these args as they are django-specific parameters
+	local run_migrations="$4"
+	local load_ts_templates="$5"
+	local project_type="$(get_project_type "$project")"
 
 	goto_project "$project" "$run_install" "$branch" || return 1
-	django_migrate_db || retun 1
 
-	if [[ "$project_requires_load_termsheet_templates" = 'true' ]]; then
-		load_termsheet_templates || return 1
+	if [[ "$project_type" = "$project_type_django" ]]; then
+		local project_requires_load_termsheet_templates=$(get_project_requires_load_termsheet_templates "$project")
+
+		if [[ "$run_migrations" = 'true' ]]; then
+			django_migrate_db || return 1
+		fi
+
+		if [[ "$project_requires_load_termsheet_templates" = 'true' && "$load_ts_templates" = 'true'  ]]; then
+			load_termsheet_templates || return 1
+		fi
 	fi
 
 	return 0
 }
 
+function run_django_start_server() {
+	local project="$1"
+	local port="$2"
+
+	goto_project "$project" 'false' || return 1
+	django_start_server "$port"
+}
+
+function run_django_start_celery() {
+	local project="$1"
+	local app_name="$2"
+	local priority="$3"
+
+	goto_project "$project" 'false' || return 1
+	django_start_celery "$app_name" "$priority"
+}
+
+function run_npm_run_watch() {
+	local project="$1"
+
+	goto_project "$project" 'false' || return 1
+	npm_run_watch
+}
+
+
 function run_command_with_tmux_unlock() {
 	local tmux_lock_channel="$1"
 	shift
 	$@ && tmux wait-for -S "$tmux_lock_channel"
+}
+
+function get_running_tmux_session_with_regex() {
+	local session_name_regex="$1"
+	local tmux_sessions=( $(tmux list-sessions -F "#{session_name}") )
+	local matched_session_running='false'
+	local -i num_of_matched_sessions=0
+
+	for sesh in "${tmux_sessions[@]}"; do
+		if [[ "$sesh" =~ $session_name_regex ]]; then
+			local matched_session_running='true'
+			local num_of_matched_sessions=$((++num_of_matched_sessions))
+			if [[ $num_of_matched_sessions -gt 1 ]]; then
+				print_format "$style_error" "$message_multiple_running_tmux_sessions. Session #$num_of_matched_sessions: $sesh"
+			fi
+		fi
+	done
+
+	if [[ "$matched_session_running" = 'true' && $num_of_matched_sessions -eq 1 ]]; then
+		for match in "${BASH_REMATCH[@]}"; do
+			printf "%s\n" "$match"
+		done
+		return 0
+	elif [[ "$matched_session_running" = 'true' ]]; then
+		return 2
+	else
+		return 1
+	fi
+}
+
+function create_tmux_windows_for_project() {
+	local tmux_session_name="$1"
+	local project="$2"
+	local replace_first_window="$3"
+	local project_type="$(get_project_type "$project")"
+	local project_dir="$(get_project_dir "$project")"
+
+	case "$project_type" in
+		"$project_type_django")
+			local win_name_django="${project}${tmux_win_name_django_suffix}"
+			local win_name_celery="${project}${tmux_win_name_celery_suffix}"
+			local project_celery_app_name="$(get_project_celery_app_name "$project")"
+
+			if [[ "$replace_first_window" = 'true' ]]; then
+				tmux new-window -dk -c "$project_dir"  -t "$tmux_session_name:$tmux_default_window_name" -n "$win_name_django" || return 1
+			else
+				tmux new-window -da -c "$project_dir" -t "$tmux_session_name:{end}" -n "$win_name_django" || return 1
+			fi
+
+			if [[ -n "$project_celery_app_name" ]]; then
+				tmux new-window -da -c "$project_dir" -t "$tmux_session_name:{end}" -n "$win_name_celery" || return 1
+				tmux split-window -c "$project_dir" -t "$tmux_session_name:$win_name_celery" || return 1
+			fi
+			;;
+		"$project_type_node")
+			local win_name_npm_watch="${project}${tmux_win_name_npm_watch_suffix}"
+
+			if [[ "$replace_first_window" = 'true' ]]; then
+				tmux new-window -dk -c "$project_dir" -t "$tmux_session_name:$tmux_default_window_name" -n "$win_name_npm_watch" || return 1
+			else
+				tmux new-window -da -c "$project_dir" -t "$tmux_session_name:{end}" -n "$win_name_npm_watch" || return 1
+			fi
+			;;
+	esac
+
+	return 0
 }
 
 
@@ -579,7 +768,7 @@ function freeze() {
 
 	if is_valid_project_for_freeze_command "$project"; then
 		local project_db_name="$(get_project_db_name "$project")"
-		setup_django_branch "$project" 'true' "$branch" || return 1
+		setup_project_branch "$project" 'true' "$branch" 'true' 'true' || return 1
 		create_clean_db "$project_db_name" || return 1
 
 	elif is_valid_project "$project"; then
@@ -672,10 +861,239 @@ function run() {
 	return 0
 }
 
+function has_file_changes_between_branches_based_on_pattern() {
+	local project="$1"
+	local branch_from="$2"
+	local branch_to="$3"
+	local file_pattern_to_find="$4"
+	local project_dir="$(get_project_dir "$project")"
+	local git_output="$(git --no-pager -C "$project_dir" diff --name-only "${branch_from}...${branch_to}" "$file_pattern_to_find" )"
+
+	if [[ -z "$git_output" ]]; then
+		printf "false"
+		return 1
+	else
+		printf "true"
+		return 0
+	fi
+}
+
+function update_tmux_windows_for_project() {
+	local tmux_session_name="$1"
+	local project="$2"
+	local branch_from="$3"
+	local branch_to="$4"
+	local project_dir="$(get_project_dir "$project")"
+	local project_type="$(get_project_type "$project")"
+
+	tmux new-window -da -t "$tmux_session_name:{end}" -n "$project-$tmux_default_window_name" || return 1
+
+	case "$project_type" in
+		"$project_type_django")
+			# If there is a currently running session, check what the most effecient way to update is.
+			# Otherwise update everything
+			if [[ -n "$branch_from" ]]; then
+				local run_install="$(has_file_changes_between_branches_based_on_pattern "$project" "$branch_from" \
+					"$branch_to" "$file_pattern_py_requirments" )"
+				local run_migrations="$(has_file_changes_between_branches_based_on_pattern "$project" "$branch_from" \
+					"$branch_to" "$file_pattern_django_migrations" )"
+				local load_ts_templates="$(has_file_changes_between_branches_based_on_pattern "$project" "$branch_from" \
+					"$branch_to" "$file_pattern_ts_templates" )"
+			else
+				local run_install='true'
+				local run_migrations='true'
+				local load_ts_templates='true'
+			fi
+
+			local win_name_django="${project}${tmux_win_name_django_suffix}"
+			local win_name_celery="${project}${tmux_win_name_celery_suffix}"
+			local project_celery_app_name="$(get_project_celery_app_name "$project")"
+			local project_port="$(get_project_port "$project")"
+
+			printf "run_install = $run_install\n"
+			printf "run_migrations = $run_migrations\n"
+			printf "load_ts_templates = $load_ts_templates\n"
+
+			if [[ -n "$project_celery_app_name" && -n "$branch_from" ]]; then
+				tmux send-keys -t "$tmux_session_name:$win_name_celery.0" "C-c" "C-l" || return 1
+				tmux send-keys -t "$tmux_session_name:$win_name_celery.1" "C-c" "C-l" || return 1
+			fi
+
+			if [[ "$run_install" = 'true' && -n "$branch_from" ]]; then
+				tmux send-keys -t "$tmux_session_name:$win_name_django" "C-c" "C-l" || return 1
+			fi
+
+			tmux send-keys -t "$tmux_session_name:$project-$tmux_default_window_name" \
+				"om script-run run_command_with_tmux_unlock $tmux_default_lock_channel " \
+				"setup_project_branch $project $run_install $branch_to $run_migrations $load_ts_templates" "C-m" || return 1
+			tmux wait-for $tmux_default_lock_channel
+
+			if [[ -n "$project_celery_app_name" ]]; then
+				tmux send-keys -t "$tmux_session_name:$win_name_celery.0" \
+					"om script-run run_django_start_celery $project $project_celery_app_name high_priority" "C-m" || return 1
+				tmux send-keys -t "$tmux_session_name:$win_name_celery.1" \
+					"om script-run run_django_start_celery $project $project_celery_app_name" "C-m" || return 1
+			fi
+
+			if [[ "$run_install" = 'true' ]]; then
+				tmux send-keys -t "$tmux_session_name:$win_name_django" \
+					"om script-run run_django_start_server $project $project_port" "C-m" || return 1
+			fi
+			;;
+
+		"$project_type_node")
+			if [[ -n "$branch_from" ]]; then
+				local run_install="$(has_file_changes_between_branches_based_on_pattern "$project" "$branch_from" \
+					"$branch_to" "$file_pattern_py_requirments" )"
+			else
+				local run_install='true'
+			fi
+
+			local win_name_npm_watch="${project}${tmux_win_name_npm_watch_suffix}"
+
+			printf "run_install = $run_install\n"
+
+			if [[ "$run_install" = 'true' ]]; then
+				if [[ -n "$branch_from" ]]; then
+					tmux send-keys -t "$tmux_session_name:$win_name_npm_watch" "C-c" "C-l" || return 1
+				fi
+
+				tmux send-keys -t "$tmux_session_name:$project-$tmux_default_window_name" \
+					"om script-run run_command_with_tmux_unlock $tmux_default_lock_channel " \
+					"setup_project_branch $project $run_install $branch_to" "C-m" || return 1
+				tmux wait-for $tmux_default_lock_channel
+				tmux send-keys -t "$tmux_session_name:$win_name_npm_watch" \
+					"om script-run run_npm_run_watch $project" "C-m" || return 1
+			else
+				# No need to restart the npm watch if there are no changes in the node requirements
+				tmux send-keys -t "$tmux_session_name:$project-$tmux_default_window_name" \
+					"om script-run setup_project_branch $project $run_install $branch_to" "C-m" || return 1
+			fi
+			;;
+	esac
+
+	# tmux kill-window -t "$tmux_session_name:$tmux_default_window_name"
+
+	return 0
+}
+
 function build() {
-	echo 'In the build command'
-	echo
-	echo "Args passed: \$1: $1, \$2: $2, \$3: $3"
+	local ba_branch_to="$1"
+	local old_build_running='false'
+
+	if [[ $# -eq 0 ]]; then
+		print_format "$style_error" "$message_not_enough_args"
+		return 1
+
+	elif [[ $# -ge 2 ]]; then
+		shift
+		for (( i=1; i<=$#; i+=2 )); do
+			local option="${!i}"
+			local branch_index=$((i + 1))
+			local branch="${!branch_index}"
+
+			if is_valid_build_command_option "$option"; then
+				case "$option" in
+					"$option_om"|"$option_om_short")
+						if [[ $# -lt $branch_index ]]; then
+							print_format "$style_error" "$message_incorrect_num_of_args"
+							return 1
+						else
+							local om_branch_to="$branch"
+						fi
+						;;
+					"$option_kod"|"$option_kod_short")
+						if [[ $# -lt $branch_index ]]; then
+							print_format "$style_error" "$message_incorrect_num_of_args"
+							return 1
+						else
+							local kod_branch_to="$branch"
+						fi
+						;;
+				esac
+			else
+				print_format "$style_rror" "$message_unknown_arg: $option"
+				printf "$message_usage\n"
+				return 1
+			fi
+
+		done
+	fi
+
+	printf "%s\n" "ba_branch_to = $ba_branch_to"
+	printf "%s\n" "om_branch_to = $om_branch_to"
+	printf "%s\n" "kod_branch_to = $kod_branch_to"
+
+	# Starts tmux server only if it is not already running
+	tmux start-server
+
+	# TODO: Figure out how to fix this hack - why is it not working in the script?
+	local tmux_session_rematch=( $(get_running_tmux_session_with_regex "$sesh_name_regex") )
+	get_running_tmux_session_with_regex "$sesh_name_regex" &> /dev/null
+
+	local tmux_session_rematch_ret=$?
+	local tmux_sesh_name_new="${script_name}${sesh_name_sep}${project_ba_short}=${ba_branch_to}"
+	tmux_sesh_name_new+="$([[ -z "$om_branch_to" ]] || printf "${sesh_name_sep}${project_om_short}=${om_branch_to}")"
+	tmux_sesh_name_new+="$([[ -z "$kod_branch_to" ]] || printf "${sesh_name_sep}${project_kod_short}=${kod_branch_to}")"
+
+	printf "ret_value = $tmux_session_rematch_ret\n"
+
+	if [[ $tmux_session_rematch_ret -ge 2 ]]; then
+		return 1
+
+	elif [[ $tmux_session_rematch_ret -eq 1 ]]; then
+		tmux new-session -d -s "$tmux_sesh_name_new" -n "$tmux_default_window_name"
+		create_tmux_windows_for_project "$tmux_sesh_name_new" "$project_ba_short" 'true'
+		create_tmux_windows_for_project "$tmux_sesh_name_new" "$project_ba_node_short" 'false'
+
+		if [[ -n "$om_branch_to" ]]; then
+			create_tmux_windows_for_project "$tmux_sesh_name_new" "$project_om_short" 'false'
+		fi
+
+		if [[ -n "$kod_branch_to" ]]; then
+			create_tmux_windows_for_project "$tmux_sesh_name_new" "$project_kod_short" 'false'
+		fi
+
+	else
+		local tmux_sesh_name_old="${tmux_session_rematch[0]}"
+
+		for (( i=0; i<${#tmux_session_rematch[@]}; i++ )); do
+			local match="${tmux_session_rematch[$i]}"
+			local -i after_match_index=$((i + 1))
+
+			if is_valid_project_tag_for_build_command "$match"; then
+				case "$match" in
+					"$project_ba_short")
+						local ba_branch_from="${tmux_session_rematch[$after_match_index]}"
+						;;
+					"$project_om_short")
+						local om_branch_from="${tmux_session_rematch[$after_match_index]}"
+						;;
+					"$project_kod_short")
+						local kod_branch_from="${tmux_session_rematch[$after_match_index]}"
+						;;
+				esac
+			fi
+		done
+
+		tmux rename-session -t "$tmux_sesh_name_old" "$tmux_sesh_name_new"
+	fi
+
+	printf "%s\n" "ba_branch_from = $ba_branch_from"
+	printf "%s\n" "om_branch_from = $om_branch_from"
+	printf "%s\n" "kod_branch_from = $kod_branch_from"
+
+	# Update the tmux session with new code in the most effecient way possible - services are only restarted if required
+	update_tmux_windows_for_project "$tmux_sesh_name_new" "$project_ba_short" "$ba_branch_from" "$ba_branch_to" || return 1
+	update_tmux_windows_for_project "$tmux_sesh_name_new" "$project_ba_node_short" "$ba_branch_from" "$ba_branch_to" || return 1
+	update_tmux_windows_for_project "$tmux_sesh_name_new" "$project_om_short" "$om_branch_from" "$om_branch_to" || return 1
+	update_tmux_windows_for_project "$tmux_sesh_name_new" "$project_kod_short" "$kod_branch_from" "$kod_branch_to" || return 1
+
+	return 0
+}
+
+function script_run() {
+	$@ || print_format "$style_error" "$message_function_returned_error"
 	return 0
 }
 
@@ -696,6 +1114,9 @@ function handle_command() {
 			;;
 		"$command_run")
 			run "$@" || return 1
+			;;
+		"$command_scipt_run")
+			script_run "$@" || return 1
 			;;
 	esac
 
