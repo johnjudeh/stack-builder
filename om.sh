@@ -5,11 +5,6 @@
 readonly script_name='om'
 readonly version='1.0.0'
 
-readonly virtual_env_type_py='py'
-readonly virtual_env_type_node='node'
-readonly project_type_django='django'
-readonly project_type_node='node'
-
 readonly fm_red="$(tput setaf 1)"
 readonly fm_green="$(tput setaf 2)"
 readonly fm_yellow="$(tput setaf 3)"
@@ -25,36 +20,24 @@ readonly style_error='err'
 readonly env_var_venv_root='VENV_ROOT'
 readonly env_var_ba_root='BA_ROOT'
 readonly env_var_ba_node='BA_NODE_ROOT'
-readonly env_var_kodiak_root='KODIAK_ROOT'
+readonly env_var_kodiak_root='KOD_ROOT'
 readonly env_var_om_root='OM_ROOT'
 readonly env_var_ba_venv='BA_VENV'
-readonly env_var_kodiak_venv='KODIAK_VENV'
+readonly env_var_kodiak_venv='KOD_VENV'
 readonly env_var_ba_nenv='BA_NENV'
 readonly env_var_om_nenv='OM_NENV'
 readonly env_var_ba_db='BA_DB'
-readonly env_var_kodiak_db='KODIAK_DB'
+readonly env_var_kodiak_db='KOD_DB'
 readonly env_var_ba_celery_app='BA_CELERY_APP'
 readonly env_vars_required=( \
 	"$env_var_venv_root" "$env_var_ba_root" "$env_var_ba_node" "$env_var_kodiak_root" "$env_var_om_root" "$env_var_ba_venv" \
 	"$env_var_kodiak_venv" "$env_var_ba_nenv" "$env_var_om_nenv" "$env_var_ba_db" "$env_var_kodiak_db" "$env_var_ba_celery_app" \
 )
 
-readonly env_var_kodiak_url='KODIAK_URL'
-readonly env_var_om_url='OM_URL'
-
-readonly local_host='https://127.0.0.1'
-
-readonly url_kod_local="$local_host:$port_kod"
-readonly url_kod_master='https://kodiak.originmarkets-labs.com/'
-readonly url_kod_develop='https://kodiak.originmarkets-dev.com/'
-readonly url_kod_default="$url_kod_master"
-
-readonly url_om_local="$OM_ROOT/dist/om-app"
-readonly url_om_develop='https://dev.originmarkets-dev.com/angular/'
-readonly url_om_qa='https://qa.originmarkets-dev.com/angular/'
-readonly url_om_master='https://master.originmarkets-dev.com/angular/'
-readonly url_om_develop='https://dev.originmarkets-dev.com/angular/'
-readonly url_om_default="$url_om_develop"
+declare -ri proj_i_ba=0
+declare -ri proj_i_ba_node=1
+declare -ri proj_i_om=2
+declare -ri proj_i_kod=3
 
 readonly project_ba='bankangle'
 readonly project_ba_short='ba'
@@ -71,8 +54,69 @@ readonly projects=( \
 	"$project_kod" "$project_kod_short" \
 )
 
+readonly -a project_names=(
+	[$proj_i_ba]="$project_ba"
+	[$proj_i_ba_node]="$project_ba_node"
+	[$proj_i_om]="$project_om"
+	[$proj_i_kod]="$project_kod"
+)
+readonly -a project_short_names=(
+	[$proj_i_ba]="$project_ba_short"
+	[$proj_i_ba_node]="$project_ba_node_short"
+	[$proj_i_om]="$project_om_short"
+	[$proj_i_kod]="$project_kod_short"
+)
+readonly -a project_dirs=(
+	[$proj_i_ba]="$BA_ROOT"
+	[$proj_i_ba_node]="$BA_NODE_ROOT"
+	[$proj_i_om]="$OM_ROOT"
+	[$proj_i_kod]="$KOD_ROOT"
+)
+
+readonly virtual_env_type_py='py'
+readonly virtual_env_type_node='node'
+readonly -a project_virtual_env_types=(
+	[$proj_i_ba]="$virtual_env_type_py"
+	[$proj_i_ba_node]="$virtual_env_type_node"
+	[$proj_i_om]="$virtual_env_type_node"
+	[$proj_i_kod]="$virtual_env_type_py"
+)
+readonly -a project_virtual_env_names=(
+	[$proj_i_ba]="$BA_VENV"
+	[$proj_i_ba_node]="$BA_NENV"
+	[$proj_i_om]="$OM_NENV"
+	[$proj_i_kod]="$KOD_VENV"
+)
+
+readonly project_type_django='django'
+readonly project_type_node='node'
+readonly -a project_types=(
+	[$proj_i_ba]="$project_type_django"
+	[$proj_i_ba_node]="$project_type_node"
+	[$proj_i_om]="$project_type_node"
+	[$proj_i_kod]="$project_type_django"
+)
+
 readonly port_ba='8000'
 readonly port_kod='8002'
+readonly -a project_ports=(
+	[$proj_i_ba]="$port_ba"
+	[$proj_i_kod]="$port_kod"
+)
+
+readonly -a project_db_names=(
+	[$proj_i_ba]="$BA_DB"
+	[$proj_i_kod]="$KOD_DB"
+)
+
+readonly -a project_requires_load_termsheet_templates=(
+	[$proj_i_ba]='true'
+	[$proj_i_kod]='false'
+)
+
+readonly -a project_celery_app_names=(
+	[$proj_i_ba]="$BA_CELERY_APP"
+)
 
 readonly command_freeze='freeze'
 readonly command_restore='restore'
@@ -160,6 +204,22 @@ readonly file_pattern_node_requirements='*package.json*'
 readonly file_pattern_django_migrations='*migrations*'
 readonly file_pattern_ts_templates='*fixtures/termsheet_templates*'
 
+readonly env_var_kodiak_url='KODIAK_URL'
+readonly env_var_om_url='OM_URL'
+
+readonly local_host='https://127.0.0.1'
+
+readonly url_kod_local="$local_host:$port_kod"
+readonly url_kod_master='https://kodiak.originmarkets-labs.com/'
+readonly url_kod_develop='https://kodiak.originmarkets-dev.com/'
+readonly url_kod_default="$url_kod_master"
+
+readonly url_om_local="$OM_ROOT/dist/om-app"
+readonly url_om_develop='https://dev.originmarkets-dev.com/angular/'
+readonly url_om_qa='https://qa.originmarkets-dev.com/angular/'
+readonly url_om_master='https://master.originmarkets-dev.com/angular/'
+readonly url_om_default="$url_om_develop"
+
 
 ######## GLOBAL VARIABLES ########
 
@@ -171,147 +231,26 @@ verbose_mode='false'
 # TODO: Replace these with arrays where each index refers to a project to act as a dictionary?
 # This way it can be accessed like ${project_dir[$project_index]} rather than these functions
 
-function get_project_dir() {
+function get_project_index() {
 	local project="$1"
 
 	case "$project" in
 		"$project_ba"|"$project_ba_short")
-			printf "$BA_ROOT"
+			printf "$proj_i_ba"
 			;;
 		"$project_ba_node"|"$project_ba_node_short")
-			printf "$BA_NODE_ROOT"
+			printf "$proj_i_ba_node"
 			;;
 		"$project_om"|"$project_om_short")
-			printf "$OM_ROOT"
+			printf "$proj_i_om"
 			;;
 		"$project_kod"|"$project_kod_short")
-			printf "$KODIAK_ROOT"
+			printf "$proj_i_kod"
 			;;
 	esac
 
 	return 0
 }
-
-function get_project_virtual_env_type() {
-	local project="$1"
-
-	case "$project" in
-		"$project_ba"|"$project_ba_short")
-			printf "$virtual_env_type_py"
-			;;
-		"$project_ba_node"|"$project_ba_node_short")
-			printf "$virtual_env_type_node"
-			;;
-		"$project_om"|"$project_om_short")
-			printf "$virtual_env_type_node"
-			;;
-		"$project_kod"|"$project_kod_short")
-			printf "$virtual_env_type_py"
-			;;
-	esac
-
-	return 0
-}
-
-function get_project_virtual_env_name() {
-	local project="$1"
-
-	case "$project" in
-		"$project_ba"|"$project_ba_short")
-			printf "$BA_VENV"
-			;;
-		"$project_ba_node"|"$project_ba_node_short")
-			printf "$BA_NENV"
-			;;
-		"$project_om"|"$project_om_short")
-			printf "$OM_NENV"
-			;;
-		"$project_kod"|"$project_kod_short")
-			printf "$KODIAK_VENV"
-			;;
-	esac
-
-	return 0
-}
-
-function get_project_type() {
-	local project="$1"
-
-	case "$project" in
-		"$project_ba"|"$project_ba_short")
-			printf "$project_type_django"
-			;;
-		"$project_ba_node"|"$project_ba_node_short")
-			printf "$project_type_node"
-			;;
-		"$project_om"|"$project_om_short")
-			printf "$project_type_node"
-			;;
-		"$project_kod"|"$project_kod_short")
-			printf "$project_type_django"
-			;;
-	esac
-
-	return 0
-}
-
-function get_project_db_name() {
-	local project="$1"
-
-	case "$project" in
-		"$project_ba"|"$project_ba_short")
-			printf "$BA_DB"
-			;;
-		"$project_kod"|"$project_kod_short")
-			printf "$KODIAK_DB"
-			;;
-	esac
-
-	return 0
-}
-
-function get_project_requires_load_termsheet_templates() {
-	local project="$1"
-
-	case "$project" in
-		"$project_ba"|"$project_ba_short")
-			printf 'true'
-			;;
-		"$project_kod"|"$project_kod_short")
-			printf 'false'
-			;;
-	esac
-
-	return 0
-}
-
-function get_project_port() {
-	local project="$1"
-
-	case "$project" in
-		"$project_ba"|"$project_ba_short")
-			printf "$port_ba"
-			;;
-		"$project_kod"|"$project_kod_short")
-			printf "$port_kod"
-			;;
-	esac
-
-	return 0
-}
-
-function get_project_celery_app_name() {
-	local project="$1"
-
-	case "$project" in
-		"$project_ba"|"$project_ba_short")
-			printf "$BA_CELERY_APP"
-			;;
-	esac
-
-	return 0
-}
-
 
 
 ######## UTILITY FUNCTIONS ########
@@ -402,7 +341,6 @@ function activate_code_env() {
 
 	print_format "$style_command_title" "$title"
 
-	# TODO: Figure out how to export this to the shell that called it
 	source "$VENV_ROOT/$code_type/$env_name/bin/activate" || return 1
 
 	if [[ "$run_install" = 'true'  ]]; then
@@ -549,12 +487,14 @@ function npm_run_watch() {
 }
 
 function goto_project() {
-	local porject="$1"
+	local project="$1"
 	local run_install="$2"
 	local branch="$3"
-	local project_dir="$(get_project_dir "$project")"
-	local project_code_type="$(get_project_virtual_env_type "$project")"
-	local project_code_env_name="$(get_project_virtual_env_name "$project")"
+
+	local -i project_i=$(get_project_index "$project")
+	local project_dir="${project_dirs[$project_i]}"
+	local project_virtual_env_type="${project_virtual_env_types[$project_i]}"
+	local project_virtual_env_name="${project_virtual_env_names[$project_i]}"
 
 	change_dir "$project_dir" || return 1
 
@@ -562,7 +502,7 @@ function goto_project() {
 		checkout_git_branch "$branch" || return 1
 	fi
 
-	activate_code_env "$project_code_type" "$project_code_env_name" "$run_install" || return 1
+	activate_code_env "$project_virtual_env_type" "$project_virtual_env_name" "$run_install" || return 1
 
 	return 0
 }
@@ -574,18 +514,20 @@ function setup_project_branch() {
 	# TODO: Potentially rethink these args as they are django-specific parameters
 	local run_migrations="$4"
 	local load_ts_templates="$5"
-	local project_type="$(get_project_type "$project")"
+
+	local -i project_i=$(get_project_index "$project")
+	local project_type="${project_types[$project_i]}"
 
 	goto_project "$project" "$run_install" "$branch" || return 1
 
 	if [[ "$project_type" = "$project_type_django" ]]; then
-		local project_requires_load_termsheet_templates=$(get_project_requires_load_termsheet_templates "$project")
+		local project_requires_load_ts_templates="${project_requires_load_termsheet_templates[$project_i]}"
 
 		if [[ "$run_migrations" = 'true' ]]; then
 			django_migrate_db || return 1
 		fi
 
-		if [[ "$project_requires_load_termsheet_templates" = 'true' && "$load_ts_templates" = 'true'  ]]; then
+		if [[ "$project_requires_load_ts_templates" = 'true' && "$load_ts_templates" = 'true'  ]]; then
 			load_termsheet_templates || return 1
 		fi
 	fi
@@ -658,15 +600,17 @@ function update_tmux_windows_for_project() {
 	# TODO: Implement the replace first window differently as doens't make sense anymore
 	local replace_first_window="$3"
 	local create="$4"
-	local project_type="$(get_project_type "$project")"
-	local project_dir="$(get_project_dir "$project")"
+
+	local -i project_i=$(get_project_index "$project")
+	local project_dir="${project_dirs[$project_i]}"
+	local project_type="${project_types[$project_i]}"
 	local tmux_windows=( $(tmux list-windows -t "$tmux_session_name" -F "#{window_name}") )
 
 	case "$project_type" in
 		"$project_type_django")
 			local win_name_django="${project}${tmux_win_name_django_suffix}"
 			local win_name_celery="${project}${tmux_win_name_celery_suffix}"
-			local project_celery_app_name="$(get_project_celery_app_name "$project")"
+			local project_celery_app_name="${project_celery_app_names[$project_i]}"
 
 			if [[ "$create" = 'true' ]]; then
 				if ! is_in_array "$win_name_django" "${tmux_windows[@]}"; then
@@ -799,6 +743,7 @@ function check_env() {
 
 function freeze() {
 	local project="$1"
+	local -i project_i=$(get_project_index "$project")
 
 	if [[ $# -eq 0 ]]; then
 		print_format "$style_error" "$message_not_enough_args"
@@ -829,7 +774,7 @@ function freeze() {
 	fi
 
 	if is_valid_project_for_freeze_command "$project"; then
-		local project_db_name="$(get_project_db_name "$project")"
+		local project_db_name="${project_db_names[$project_i]}"
 		setup_project_branch "$project" 'true' "$branch" 'true' 'true' || return 1
 		create_clean_db "$project_db_name" || return 1
 
@@ -847,6 +792,8 @@ function freeze() {
 
 function restore() {
 	local project="$1"
+
+	local -i project_i=$(get_project_index "$project")
 	local delete_db='false'
 
 	if [[ $# -eq 0 ]]; then
@@ -871,7 +818,7 @@ function restore() {
 	fi
 
 	if is_valid_project_for_freeze_command "$project"; then
-		local project_db_name="$(get_project_db_name "$project")"
+		local project_db_name="${project_db_names[$project_i]}"
 		restore_from_clean_db "$project_db_name" "$delete_db" || return 1
 
 	elif is_valid_project "$project"; then
@@ -929,7 +876,9 @@ function has_file_changes_between_branches_based_on_pattern() {
 	local branch_from="$2"
 	local branch_to="$3"
 	local file_pattern_to_find="$4"
-	local project_dir="$(get_project_dir "$project")"
+
+	local -i project_i=$(get_project_index "$project")
+	local project_dir="${project_dirs[$project_i]}"
 	local git_output="$(git --no-pager -C "$project_dir" diff --name-only "${branch_from}...${branch_to}" "$file_pattern_to_find" )"
 
 	if [[ -z "$git_output" ]]; then
@@ -947,8 +896,10 @@ function refresh_tmux_windows_for_project() {
 	local branch_from="$3"
 	local branch_to="$4"
 	local force_reload="$5"
-	local project_dir="$(get_project_dir "$project")"
-	local project_type="$(get_project_type "$project")"
+
+	local -i project_i=$(get_project_index "$project")
+	local project_dir="${project_dirs[$project_i]}"
+	local project_type="${project_types[$project_i]}"
 
 	# TODO: Remove debugging $project
 	tmux new-window -da -t "$tmux_session_name:{end}" -n "$project-$tmux_default_window_name" || return 1
@@ -972,8 +923,8 @@ function refresh_tmux_windows_for_project() {
 
 			local win_name_django="${project}${tmux_win_name_django_suffix}"
 			local win_name_celery="${project}${tmux_win_name_celery_suffix}"
-			local project_celery_app_name="$(get_project_celery_app_name "$project")"
-			local project_port="$(get_project_port "$project")"
+			local project_celery_app_name="${project_celery_app_names[$project_i]}"
+			local project_port="${project_ports[$project_i]}"
 
 			printf "run_install = $run_install\n"
 			printf "run_migrations = $run_migrations\n"
@@ -1037,6 +988,7 @@ function refresh_tmux_windows_for_project() {
 			;;
 	esac
 
+	# TODO: Uncomment out this once debugging is done
 	# tmux kill-window -t "$tmux_session_name:$tmux_default_window_name"
 
 	return 0
