@@ -228,9 +228,6 @@ verbose_mode='false'
 
 ######## MAPPING FUNCTIONS ########
 
-# TODO: Replace these with arrays where each index refers to a project to act as a dictionary?
-# This way it can be accessed like ${project_dir[$project_index]} rather than these functions
-
 function get_project_index() {
 	local project="$1"
 
