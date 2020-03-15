@@ -971,17 +971,19 @@ function run() {
 	return 0
 }
 
-# TODO: This does not do exactly what you want it to do when going from develop to QA
-# TODO: This only looks at local branches - we should be looking at remote branches if they are further ahead
 function has_file_changes_between_branches_based_on_pattern() {
 	local project="$1"
 	local branch_from="$2"
 	local branch_to="$3"
 	local file_pattern_to_find="$4"
 
+	# Want to compare against the remote branch we're going to in case
+	# there is no local copy or an outdated local copy
+	local remote_branch_to="origin/$branch_to"
+
 	local -i project_i=$(get_project_index "$project")
 	local project_dir="${project_dirs[$project_i]}"
-	local git_output="$(git --no-pager -C "$project_dir" diff --name-only "${branch_from}...${branch_to}" "$file_pattern_to_find" )"
+	local git_output="$(git --no-pager -C "$project_dir" diff --name-only "${branch_from}..${remote_branch_to}" "$file_pattern_to_find" )"
 
 	if [[ -z "$git_output" ]]; then
 		printf "false"
