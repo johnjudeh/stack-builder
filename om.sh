@@ -396,6 +396,29 @@ function checkout_git_branch() {
 	return 0
 }
 
+function has_file_changes_between_branches_based_on_pattern() {
+	local project="$1"
+	local branch_from="$2"
+	local branch_to="$3"
+	local file_pattern_to_find="$4"
+
+	# Want to compare against the remote branch we're going to in case
+	# there is no local copy or an outdated local copy
+	local remote_branch_to="origin/$branch_to"
+
+	local -i project_i=$(get_project_index "$project")
+	local project_dir="${project_dirs[$project_i]}"
+	local git_output="$(git --no-pager -C "$project_dir" diff --name-only "${branch_from}..${remote_branch_to}" "$file_pattern_to_find" )"
+
+	if [[ -z "$git_output" ]]; then
+		printf "false"
+		return 1
+	else
+		printf "true"
+		return 0
+	fi
+}
+
 function run_command() {
 	print_format "$style_command_title" "Running command '$*'"
 	$@
@@ -619,6 +642,30 @@ function get_running_tmux_session_with_regex() {
 	fi
 }
 
+function create_tmux_worker_window() {
+	local tmux_session_name="$1"
+	local tmux_windows=( $(tmux list-windows -t "$tmux_session_name" -F "#{window_name}") )
+
+	# Creates the windows necessary for the project
+	if ! is_in_array "$tmux_window_name_worker" "${tmux_windows[@]}"; then
+		tmux new-window -dk -t "$tmux_session_name:0" -n "$tmux_window_name_worker" || return 1
+	fi
+
+	return 0
+}
+
+function delete_tmux_worker_window() {
+	local tmux_session_name="$1"
+	local tmux_windows=( $(tmux list-windows -t "$tmux_session_name" -F "#{window_name}") )
+
+	# Creates the windows necessary for the project
+	if is_in_array "$tmux_window_name_worker" "${tmux_windows[@]}"; then
+		tmux kill-window -t "$tmux_session_name:$tmux_window_name_worker"
+	fi
+
+	return 0
+}
+
 function update_tmux_windows_for_project() {
 	local tmux_session_name="$1"
 	local project="$2"
@@ -776,6 +823,113 @@ function load_env_var_in_tmux_windows_for_project() {
 	local env_var_value="$4"
 	local update_type="$tmux_update_type_set_env_var"
 	update_tmux_windows_for_project "$tmux_session_name" "$project" "$update_type" "$env_var_key" "$env_var_value"
+}
+
+function refresh_tmux_windows_for_project() {
+	local tmux_session_name="$1"
+	local project="$2"
+	local branch_from="$3"
+	local branch_to="$4"
+	local force_reload="$5"
+
+	local -i project_i=$(get_project_index "$project")
+	local project_dir="${project_dirs[$project_i]}"
+	local project_type="${project_types[$project_i]}"
+
+	case "$project_type" in
+		"$project_type_django")
+			# If there is a currently running session, check what the most effecient way to update is.
+			# Otherwise update everything
+			if [[ -n "$branch_from" ]]; then
+				local run_install="$(has_file_changes_between_branches_based_on_pattern "$project" "$branch_from" \
+					"$branch_to" "$file_pattern_py_requirments" )"
+				local run_migrations="$(has_file_changes_between_branches_based_on_pattern "$project" "$branch_from" \
+					"$branch_to" "$file_pattern_django_migrations" )"
+				local load_ts_templates="$(has_file_changes_between_branches_based_on_pattern "$project" "$branch_from" \
+					"$branch_to" "$file_pattern_ts_templates" )"
+			else
+				local run_install='true'
+				local run_migrations='true'
+				local load_ts_templates='true'
+			fi
+
+			local win_name_django="${project}${tmux_win_name_django_suffix}"
+			local win_name_celery="${project}${tmux_win_name_celery_suffix}"
+			local project_celery_app_name="${project_celery_app_names[$project_i]}"
+			local project_port="${project_ports[$project_i]}"
+
+			printf "$project run_install = $run_install\n"
+			printf "$project run_migrations = $run_migrations\n"
+			printf "$project load_ts_templates = $load_ts_templates\n"
+
+			if [[ -n "$project_celery_app_name" && -n "$branch_from" ]]; then
+				# Celery needs to be restarted for any change in code, database or packages
+				tmux send-keys -t "$tmux_session_name:$win_name_celery.0" "C-c" "C-l" || return 1
+				tmux send-keys -t "$tmux_session_name:$win_name_celery.1" "C-c" "C-l" || return 1
+			fi
+
+			if [[ ( "$run_install" = 'true' || "$force_reload" = 'true' ) && -n "$branch_from" ]]; then
+				# The django server only needs restarting for changes in packages
+				tmux send-keys -t "$tmux_session_name:$win_name_django" "C-c" "C-l" || return 1
+			fi
+
+			# Setups the new branch in the most effecient way possible, blocking further execution till it succeeds
+			tmux send-keys -t "$tmux_session_name:$tmux_window_name_worker" \
+				"om script-run run_command_with_tmux_unlock $tmux_default_lock_channel " \
+				"setup_project_branch $project $run_install $branch_to $run_migrations $load_ts_templates" "C-m" || return 1
+			tmux wait-for $tmux_default_lock_channel
+
+			if [[ -n "$project_celery_app_name" ]]; then
+				# Start up celery once branch is loaded
+				tmux send-keys -t "$tmux_session_name:$win_name_celery.0" \
+					"om script-run run_django_start_celery $project $project_celery_app_name high_priority" "C-m" || return 1
+				tmux send-keys -t "$tmux_session_name:$win_name_celery.1" \
+					"om script-run run_django_start_celery $project $project_celery_app_name" "C-m" || return 1
+			fi
+
+			if [[ "$run_install" = 'true' || "$force_reload" = 'true' ]]; then
+				# Start up django server if new packages were installed or if window was just opened
+				tmux send-keys -t "$tmux_session_name:$win_name_django" \
+					"om script-run run_django_start_server $project $project_port" "C-m" || return 1
+			fi
+			;;
+
+		"$project_type_node")
+			# If there is a currently running session, check what the most effecient way to update is.
+			# Otherwise update everything
+			if [[ -n "$branch_from" ]]; then
+				local run_install="$(has_file_changes_between_branches_based_on_pattern "$project" "$branch_from" \
+					"$branch_to" "$file_pattern_py_requirments" )"
+			else
+				local run_install='true'
+			fi
+
+			local win_name_npm_watch="${project}${tmux_win_name_npm_watch_suffix}"
+
+			printf "$project run_install = $run_install\n"
+
+			if [[ "$run_install" = 'true' || "$force_reload" = 'true' ]]; then
+				# If node requirements have changed, npm watch needs to be restarted
+				if [[ -n "$branch_from" ]]; then
+					tmux send-keys -t "$tmux_session_name:$win_name_npm_watch" "C-c" "C-l" || return 1
+				fi
+
+				# Setups the new branch in the most effecient way possible, blocking further execution till it succeeds
+				tmux send-keys -t "$tmux_session_name:$tmux_window_name_worker" \
+					"om script-run run_command_with_tmux_unlock $tmux_default_lock_channel " \
+					"setup_project_branch $project $run_install $branch_to" "C-m" || return 1
+				tmux wait-for $tmux_default_lock_channel
+				tmux send-keys -t "$tmux_session_name:$win_name_npm_watch" \
+					"om script-run run_npm_run_watch $project" "C-m" || return 1
+			else
+				# No need to restart the npm watch if there are no changes in the node requirements
+				tmux send-keys -t "$tmux_session_name:$tmux_window_name_worker" \
+					"om script-run setup_project_branch $project $run_install $branch_to" "C-m" || return 1
+			fi
+			;;
+	esac
+
+	return 0
 }
 
 
@@ -971,165 +1125,8 @@ function run() {
 	return 0
 }
 
-function has_file_changes_between_branches_based_on_pattern() {
-	local project="$1"
-	local branch_from="$2"
-	local branch_to="$3"
-	local file_pattern_to_find="$4"
-
-	# Want to compare against the remote branch we're going to in case
-	# there is no local copy or an outdated local copy
-	local remote_branch_to="origin/$branch_to"
-
-	local -i project_i=$(get_project_index "$project")
-	local project_dir="${project_dirs[$project_i]}"
-	local git_output="$(git --no-pager -C "$project_dir" diff --name-only "${branch_from}..${remote_branch_to}" "$file_pattern_to_find" )"
-
-	if [[ -z "$git_output" ]]; then
-		printf "false"
-		return 1
-	else
-		printf "true"
-		return 0
-	fi
-}
-
-function refresh_tmux_windows_for_project() {
-	local tmux_session_name="$1"
-	local project="$2"
-	local branch_from="$3"
-	local branch_to="$4"
-	local force_reload="$5"
-
-	local -i project_i=$(get_project_index "$project")
-	local project_dir="${project_dirs[$project_i]}"
-	local project_type="${project_types[$project_i]}"
-
-	case "$project_type" in
-		"$project_type_django")
-			# If there is a currently running session, check what the most effecient way to update is.
-			# Otherwise update everything
-			if [[ -n "$branch_from" ]]; then
-				local run_install="$(has_file_changes_between_branches_based_on_pattern "$project" "$branch_from" \
-					"$branch_to" "$file_pattern_py_requirments" )"
-				local run_migrations="$(has_file_changes_between_branches_based_on_pattern "$project" "$branch_from" \
-					"$branch_to" "$file_pattern_django_migrations" )"
-				local load_ts_templates="$(has_file_changes_between_branches_based_on_pattern "$project" "$branch_from" \
-					"$branch_to" "$file_pattern_ts_templates" )"
-			else
-				local run_install='true'
-				local run_migrations='true'
-				local load_ts_templates='true'
-			fi
-
-			local win_name_django="${project}${tmux_win_name_django_suffix}"
-			local win_name_celery="${project}${tmux_win_name_celery_suffix}"
-			local project_celery_app_name="${project_celery_app_names[$project_i]}"
-			local project_port="${project_ports[$project_i]}"
-
-			printf "$project run_install = $run_install\n"
-			printf "$project run_migrations = $run_migrations\n"
-			printf "$project load_ts_templates = $load_ts_templates\n"
-
-			if [[ -n "$project_celery_app_name" && -n "$branch_from" ]]; then
-				# Celery needs to be restarted for any change in code, database or packages
-				tmux send-keys -t "$tmux_session_name:$win_name_celery.0" "C-c" "C-l" || return 1
-				tmux send-keys -t "$tmux_session_name:$win_name_celery.1" "C-c" "C-l" || return 1
-			fi
-
-			if [[ ( "$run_install" = 'true' || "$force_reload" = 'true' ) && -n "$branch_from" ]]; then
-				# The django server only needs restarting for changes in packages
-				tmux send-keys -t "$tmux_session_name:$win_name_django" "C-c" "C-l" || return 1
-			fi
-
-			# Setups the new branch in the most effecient way possible, blocking further execution till it succeeds
-			tmux send-keys -t "$tmux_session_name:$tmux_window_name_worker" \
-				"om script-run run_command_with_tmux_unlock $tmux_default_lock_channel " \
-				"setup_project_branch $project $run_install $branch_to $run_migrations $load_ts_templates" "C-m" || return 1
-			tmux wait-for $tmux_default_lock_channel
-
-			if [[ -n "$project_celery_app_name" ]]; then
-				# Start up celery once branch is loaded
-				tmux send-keys -t "$tmux_session_name:$win_name_celery.0" \
-					"om script-run run_django_start_celery $project $project_celery_app_name high_priority" "C-m" || return 1
-				tmux send-keys -t "$tmux_session_name:$win_name_celery.1" \
-					"om script-run run_django_start_celery $project $project_celery_app_name" "C-m" || return 1
-			fi
-
-			if [[ "$run_install" = 'true' || "$force_reload" = 'true' ]]; then
-				# Start up django server if new packages were installed or if window was just opened
-				tmux send-keys -t "$tmux_session_name:$win_name_django" \
-					"om script-run run_django_start_server $project $project_port" "C-m" || return 1
-			fi
-			;;
-
-		"$project_type_node")
-			# If there is a currently running session, check what the most effecient way to update is.
-			# Otherwise update everything
-			if [[ -n "$branch_from" ]]; then
-				local run_install="$(has_file_changes_between_branches_based_on_pattern "$project" "$branch_from" \
-					"$branch_to" "$file_pattern_py_requirments" )"
-			else
-				local run_install='true'
-			fi
-
-			local win_name_npm_watch="${project}${tmux_win_name_npm_watch_suffix}"
-
-			printf "$project run_install = $run_install\n"
-
-			if [[ "$run_install" = 'true' || "$force_reload" = 'true' ]]; then
-				# If node requirements have changed, npm watch needs to be restarted
-				if [[ -n "$branch_from" ]]; then
-					tmux send-keys -t "$tmux_session_name:$win_name_npm_watch" "C-c" "C-l" || return 1
-				fi
-
-				# Setups the new branch in the most effecient way possible, blocking further execution till it succeeds
-				tmux send-keys -t "$tmux_session_name:$tmux_window_name_worker" \
-					"om script-run run_command_with_tmux_unlock $tmux_default_lock_channel " \
-					"setup_project_branch $project $run_install $branch_to" "C-m" || return 1
-				tmux wait-for $tmux_default_lock_channel
-				tmux send-keys -t "$tmux_session_name:$win_name_npm_watch" \
-					"om script-run run_npm_run_watch $project" "C-m" || return 1
-			else
-				# No need to restart the npm watch if there are no changes in the node requirements
-				tmux send-keys -t "$tmux_session_name:$tmux_window_name_worker" \
-					"om script-run setup_project_branch $project $run_install $branch_to" "C-m" || return 1
-			fi
-			;;
-	esac
-
-	return 0
-}
-
-function create_tmux_worker_window() {
-	local tmux_session_name="$1"
-	local tmux_windows=( $(tmux list-windows -t "$tmux_session_name" -F "#{window_name}") )
-
-	# Creates the windows necessary for the project
-	if ! is_in_array "$tmux_window_name_worker" "${tmux_windows[@]}"; then
-		tmux new-window -dk -t "$tmux_session_name:0" -n "$tmux_window_name_worker" || return 1
-	fi
-
-	return 0
-}
-
-function delete_tmux_worker_window() {
-	local tmux_session_name="$1"
-	local tmux_windows=( $(tmux list-windows -t "$tmux_session_name" -F "#{window_name}") )
-
-	# Creates the windows necessary for the project
-	if is_in_array "$tmux_window_name_worker" "${tmux_windows[@]}"; then
-		tmux kill-window -t "$tmux_session_name:$tmux_window_name_worker"
-	fi
-
-	return 0
-}
-
-# TODO: Get this to work for all types of input combinations - 3 projects or 1 - including the settings_local.py
 function build() {
-	local -ia possible_project_indices=("$proj_i_ba" "$proj_i_ba_node" "$proj_i_om" "$proj_i_kod")
 	local -ia tmux_sesh_name_project_indices=("$proj_i_ba" "$proj_i_om" "$proj_i_kod")
-	# TODO: ba-node should be independant but it messes with the environ variables
 	local -ia dependant_project_indices=("$proj_i_ba")
 	local -ia independant_project_indices=("$proj_i_ba_node" "$proj_i_om" "$proj_i_kod")
 
@@ -1255,6 +1252,7 @@ function build() {
 		printf "branch_from = $branch_from\n"
 		printf "branch_to = $branch_to\n"
 
+		# TODO: Add functionality for other default branch names to get to kod-dev, om-qa and om-master urls
 		if [[ -n "$branch_to" ]]; then
 			create_tmux_windows_for_project "$tmux_sesh_name_new" "$proj_short_name" || return 1
 			refresh_tmux_windows_for_project "$tmux_sesh_name_new" "$proj_short_name" "$branch_from" "$branch_to" 'false' || return 1
