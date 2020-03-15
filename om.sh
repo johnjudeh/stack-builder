@@ -214,6 +214,7 @@ declare -ri env_var_url_i_om=0
 declare -ri env_var_url_i_kod=1
 readonly env_var_om_url='OM_URL'
 readonly env_var_kod_url='KOD_URL'
+readonly -a projects_with_url_env_var_indices=("$proj_i_om" "$proj_i_kod")
 declare -ria project_env_var_url_indices=(
 	[$proj_i_om]="$env_var_url_i_om"
 	[$proj_i_kod]="$env_var_url_i_kod"
@@ -1127,8 +1128,8 @@ function build() {
 	local -ia possible_project_indices=("$proj_i_ba" "$proj_i_ba_node" "$proj_i_om" "$proj_i_kod")
 	local -ia tmux_sesh_name_project_indices=("$proj_i_ba" "$proj_i_om" "$proj_i_kod")
 	# TODO: ba-node should be independant but it messes with the environ variables
-	local -ia dependant_project_indices=("$proj_i_ba" "$proj_i_ba_node")
-	local -ia independant_project_indices=("$proj_i_om" "$proj_i_kod")
+	local -ia dependant_project_indices=("$proj_i_ba")
+	local -ia independant_project_indices=("$proj_i_ba_node" "$proj_i_om" "$proj_i_kod")
 
 	local -a project_branches_from
 	local -a project_branches_to
@@ -1247,28 +1248,39 @@ function build() {
 		local branch_from="${project_branches_from[$proj_i]}"
 		local branch_to="${project_branches_to[$proj_i]}"
 		local proj_short_name="${project_short_names[$proj_i]}"
-		local env_var_url_i="${project_env_var_url_indices[$proj_i]}"
 
 		printf "proj_short_name = $proj_short_name\n"
 		printf "branch_from = $branch_from\n"
 		printf "branch_to = $branch_to\n"
-		printf "env_var_url_i = $env_var_url_i\n"
 
 		if [[ -n "$branch_to" ]]; then
 			create_tmux_windows_for_project "$tmux_sesh_name_new" "$proj_short_name" || return 1
 			refresh_tmux_windows_for_project "$tmux_sesh_name_new" "$proj_short_name" "$branch_from" "$branch_to" 'false' || return 1
-			local env_var_url="${project_env_var_url_local[$proj_i]}"
+
+			if is_in_array "$proj_i" "${projects_with_url_env_var_indices[@]}"; then
+				local env_var_url_i="${project_env_var_url_indices[$proj_i]}"
+				local env_var_url="${project_env_var_url_local[$proj_i]}"
+				env_vars_to_set["$env_var_url_i"]="$env_var_url"
+			fi
 
 		else
 			delete_tmux_windows_for_project "$tmux_sesh_name_new" "$proj_short_name" || return 1
-			local env_var_url="${project_env_var_url_default[$proj_i]}"
+
+			if is_in_array "$proj_i" "${projects_with_url_env_var_indices[@]}"; then
+				local env_var_url_i="${project_env_var_url_indices[$proj_i]}"
+				local env_var_url="${project_env_var_url_default[$proj_i]}"
+				env_vars_to_set["$env_var_url_i"]="$env_var_url"
+			fi
 		fi
 
-		env_vars_to_set["$env_var_url_i"]="$env_var_url"
+		printf "env_var_url_i = $env_var_url_i\n"
 	done
 
-	for ev in "${env_vars_to_set[@]}"; do
-		printf "%s\n" "$ev"
+	printf "\n"
+	for evi in "${!env_vars_to_set[@]}"; do
+		local evn="${env_var_url_names[$evi]}"
+		local evv="${env_vars_to_set[$evi]}"
+		printf "%s\n" "$evn = $evv"
 	done
 
 	# Load dependent projects and add env variables from the independent projects
@@ -1279,12 +1291,10 @@ function build() {
 		local branch_from="${project_branches_from[$proj_i]}"
 		local branch_to="${project_branches_to[$proj_i]}"
 		local proj_short_name="${project_short_names[$proj_i]}"
-		local env_var_url_i="${project_env_var_url_indices[$proj_i]}"
 
 		printf "proj_short_name = $proj_short_name\n"
 		printf "branch_from = $branch_from\n"
 		printf "branch_to = $branch_to\n"
-		printf "env_var_url_i = $env_var_url_i\n"
 
 		if [[ -n "$branch_to" ]]; then
 			create_tmux_windows_for_project "$tmux_sesh_name_new" "$proj_short_name" || return 1
