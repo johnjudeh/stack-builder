@@ -192,20 +192,36 @@ readonly message_function_returned_error='Function returned non-zero value'
 
 readonly clean_db_suffix='clean'
 readonly tmux_default_lock_channel='lock'
-readonly tmux_default_window_name='orchestrator'
+readonly tmux_window_name_default='default'
+readonly tmux_window_name_worker='worker'
 readonly tmux_win_name_django_suffix='_django'
 readonly tmux_win_name_celery_suffix='_celery'
 readonly tmux_win_name_npm_watch_suffix='_npm_w'
 readonly sesh_name_sep=';'
 readonly sesh_name_regex="^${script_name}(${sesh_name_sep}($project_ba_short)=([0-9A-z_\-\/]+))?(${sesh_name_sep}($project_om_short)=([0-9A-z_\-\/]+))?(${sesh_name_sep}($project_kod_short)=([0-9A-z_\-\/]+))?$"
 
+readonly tmux_update_type_create='create'
+readonly tmux_update_type_delete='delete'
+readonly tmux_update_type_kill_sig='killsig'
+readonly tmux_update_type_set_env_var='setenvv'
+
 readonly file_pattern_py_requirments='*requirements*'
 readonly file_pattern_node_requirements='*package.json*'
 readonly file_pattern_django_migrations='*migrations*'
 readonly file_pattern_ts_templates='*fixtures/termsheet_templates*'
 
-readonly env_var_kodiak_url='KODIAK_URL'
+declare -ri env_var_url_i_om=0
+declare -ri env_var_url_i_kod=1
 readonly env_var_om_url='OM_URL'
+readonly env_var_kod_url='KOD_URL'
+declare -ria project_env_var_url_indices=(
+	[$proj_i_om]="$env_var_url_i_om"
+	[$proj_i_kod]="$env_var_url_i_kod"
+)
+declare env_var_url_names=(
+	[$env_var_url_i_om]="$env_var_om_url"
+	[$env_var_url_i_kod]="$env_var_kod_url"
+)
 
 readonly local_host='https://127.0.0.1'
 
@@ -214,11 +230,20 @@ readonly url_kod_master='https://kodiak.originmarkets-labs.com/'
 readonly url_kod_develop='https://kodiak.originmarkets-dev.com/'
 readonly url_kod_default="$url_kod_master"
 
-readonly url_om_local="$OM_ROOT/dist/om-app"
+readonly url_om_local="file://$OM_ROOT/dist/om-app"
 readonly url_om_develop='https://dev.originmarkets-dev.com/angular/'
 readonly url_om_qa='https://qa.originmarkets-dev.com/angular/'
 readonly url_om_master='https://master.originmarkets-dev.com/angular/'
 readonly url_om_default="$url_om_develop"
+
+readonly -a project_env_var_url_local=(
+	[$proj_i_om]="$url_om_local"
+	[$proj_i_kod]="$url_kod_local"
+)
+readonly -a project_env_var_url_default=(
+	[$proj_i_om]="$url_om_default"
+	[$proj_i_kod]="$url_kod_default"
+)
 
 
 ######## GLOBAL VARIABLES ########
@@ -343,7 +368,7 @@ function activate_code_env() {
 	if [[ "$run_install" = 'true'  ]]; then
 		case "$code_type" in
 			"$virtual_env_type_py")
-				pip install -r requirements.txt || return 1
+				pip install -r requirements.txt -U || return 1
 				;;
 			"$virtual_env_type_node")
 				npm install || return 1
@@ -375,6 +400,7 @@ function run_command() {
 	$@
 }
 
+# TODO: Should this happen on a project rather than a specific db?
 function create_clean_db() {
 	local db_name="$1"
 	local clean_db_name="${db_name}_${clean_db_suffix}"
@@ -403,6 +429,7 @@ function create_clean_db() {
 	return 0
 }
 
+# TODO: Should this happen on a project rather than a specific db?
 function restore_from_clean_db() {
 	local db_name="$1"
 	local delete_clean_db="$2"
@@ -594,14 +621,20 @@ function get_running_tmux_session_with_regex() {
 function update_tmux_windows_for_project() {
 	local tmux_session_name="$1"
 	local project="$2"
-	# TODO: Implement the replace first window differently as doens't make sense anymore
-	local replace_first_window="$3"
-	local create="$4"
+	local update_type="$3"
 
 	local -i project_i=$(get_project_index "$project")
 	local project_dir="${project_dirs[$project_i]}"
 	local project_type="${project_types[$project_i]}"
 	local tmux_windows=( $(tmux list-windows -t "$tmux_session_name" -F "#{window_name}") )
+
+	if [[ "$update_type" = "$tmux_update_type_set_env_var" && ( -z "$4" || -z "$5" ) ]]; then
+		printf "$style_error" "Environment variables cannot be added as they are not set"
+		return 1
+	else
+		local env_var_key="$4"
+		local env_var_value="$5"
+	fi
 
 	case "$project_type" in
 		"$project_type_django")
@@ -609,50 +642,105 @@ function update_tmux_windows_for_project() {
 			local win_name_celery="${project}${tmux_win_name_celery_suffix}"
 			local project_celery_app_name="${project_celery_app_names[$project_i]}"
 
-			if [[ "$create" = 'true' ]]; then
-				if ! is_in_array "$win_name_django" "${tmux_windows[@]}"; then
-					if [[ "$replace_first_window" = 'true' ]]; then
-						tmux new-window -dk -c "$project_dir" -t "$tmux_session_name:$tmux_default_window_name" -n "$win_name_django" || return 1
-					else
+			case "$update_type" in
+				"$tmux_update_type_create")
+					# Creates the windows necessary for the project
+					if ! is_in_array "$win_name_django" "${tmux_windows[@]}"; then
 						tmux new-window -da -c "$project_dir" -t "$tmux_session_name:{end}" -n "$win_name_django" || return 1
+						tmux send-keys -t "$tmux_session_name:$win_name_django" \
+							 "tmux wait-for -S $tmux_default_lock_channel" 'C-m' || return 1
+						tmux wait-for "$tmux_default_lock_channel"
 					fi
-				fi
 
-				if [[ -n "$project_celery_app_name" ]]; then
-					if ! is_in_array "$win_name_celery" "${tmux_windows[@]}"; then
-						tmux new-window -da -c "$project_dir" -t "$tmux_session_name:{end}" -n "$win_name_celery" || return 1
-						tmux split-window -c "$project_dir" -t "$tmux_session_name:$win_name_celery" || return 1
+					if [[ -n "$project_celery_app_name" ]]; then
+						if ! is_in_array "$win_name_celery" "${tmux_windows[@]}"; then
+							tmux new-window -da -c "$project_dir" -t "$tmux_session_name:{end}" -n "$win_name_celery" || return 1
+							tmux split-window -c "$project_dir" -t "$tmux_session_name:$win_name_celery" || return 1
+							tmux send-keys -t "$tmux_session_name:$win_name_celery.1" \
+								 "tmux wait-for -S $tmux_default_lock_channel" 'C-m' || return 1
+							tmux wait-for "$tmux_default_lock_channel"
+						fi
 					fi
-				fi
+					;;
 
-			else
-				if is_in_array "$win_name_django" "${tmux_windows[@]}"; then
-					tmux kill-window -t "$tmux_session_name:$win_name_django"
-				fi
-
-				if [[ -n "$project_celery_app_name" ]]; then
-					if is_in_array "$win_name_celery" "${tmux_windows[@]}"; then
-						tmux kill-window -t "$tmux_session_name:$win_name_celery"
+				"$tmux_update_type_delete")
+					# Deletes the windows for the project
+					if is_in_array "$win_name_django" "${tmux_windows[@]}"; then
+						tmux kill-window -t "$tmux_session_name:$win_name_django" || return 1
 					fi
-				fi
-			fi
+
+					if [[ -n "$project_celery_app_name" ]]; then
+						if is_in_array "$win_name_celery" "${tmux_windows[@]}"; then
+							tmux kill-window -t "$tmux_session_name:$win_name_celery" || return 1
+						fi
+					fi
+					;;
+
+				"$tmux_update_type_kill_sig")
+					# Sends a kill signal to all active windows - useful before setting environment variables
+					tmux send-keys -t "$tmux_session_name:$win_name_django" 'C-c' || return 1
+					if [[ -n "$project_celery_app_name" ]]; then
+						tmux send-keys -t "$tmux_session_name:$win_name_celery.0" 'C-c' || return 1
+						tmux send-keys -t "$tmux_session_name:$win_name_celery.1" 'C-c' || return 1
+					fi
+					;;
+
+				"$tmux_update_type_set_env_var")
+					# Sets environment variables in the windows of a project
+					tmux send-keys -t "$tmux_session_name:$win_name_django" "export $env_var_key=$env_var_value" 'C-m' || return 1
+
+					if [[ -n "$project_celery_app_name" ]]; then
+						tmux send-keys -t "$tmux_session_name:$win_name_celery.0" \
+							"export $env_var_key=$env_var_value" 'C-m' || return 1
+
+						tmux send-keys -t "$tmux_session_name:$win_name_celery.1" \
+							"export $env_var_key=$env_var_value" 'C-m' || return 1
+					fi
+
+					# Always send environment variables to the worker to ensure it can run scripts properly
+					tmux send-keys -t "$tmux_session_name:$tmux_window_name_worker" \
+						"export $env_var_key=$env_var_value && tmux wait-for -S $tmux_default_lock_channel" 'C-m' || return 1
+					tmux wait-for "$tmux_default_lock_channel"
+					;;
+			esac
 			;;
+
 		"$project_type_node")
 			local win_name_npm_watch="${project}${tmux_win_name_npm_watch_suffix}"
 
-			if [[ "$create" = 'true' ]]; then
-				if ! is_in_array "$win_name_npm_watch" "${tmux_windows[@]}"; then
-					if [[ "$replace_first_window" = 'true' ]]; then
-						tmux new-window -dk -c "$project_dir" -t "$tmux_session_name:$tmux_default_window_name" -n "$win_name_npm_watch" || return 1
-					else
+			case "$update_type" in
+				"$tmux_update_type_create")
+					# Creates the windows necessary for the project
+					if ! is_in_array "$win_name_npm_watch" "${tmux_windows[@]}"; then
 						tmux new-window -da -c "$project_dir" -t "$tmux_session_name:{end}" -n "$win_name_npm_watch" || return 1
+						tmux send-keys -t "$tmux_session_name:$win_name_npm_watch" \
+							 "tmux wait-for -S $tmux_default_lock_channel" 'C-m' || return 1
+						tmux wait-for "$tmux_default_lock_channel"
 					fi
-				fi
-			else
-				if is_in_array "$win_name_npm_watch" "${tmux_windows[@]}"; then
-					tmux kill-window -t "$tmux_session_name:$win_name_npm_watch"
-				fi
-			fi
+					;;
+
+				"$tmux_update_type_delete")
+					# Deletes the windows for the project
+					if is_in_array "$win_name_npm_watch" "${tmux_windows[@]}"; then
+						tmux kill-window -t "$tmux_session_name:$win_name_npm_watch" || return 1
+					fi
+					;;
+
+				"$tmux_update_type_kill_sig")
+					# Sends a kill signal to all active windows - useful before setting environment variables
+					tmux send-keys -t "$tmux_session_name:$win_name_npm_watch" 'C-c' || return 1
+					;;
+
+				"$tmux_update_type_set_env_var")
+					# Sets environment variables in the windows of a project
+					tmux send-keys -t "$tmux_session_name:$win_name_npm_watch" "export $env_var_key=$env_var_value" 'C-m' || return 1
+
+					# Always send environment variables to the worker to ensure it can run scripts properly
+					tmux send-keys -t "$tmux_session_name:$tmux_window_name_worker" \
+						"export $env_var_key=$env_var_value && tmux wait-for -S $tmux_default_lock_channel" 'C-m' || return 1
+					tmux wait-for "$tmux_default_lock_channel"
+					;;
+			esac
 			;;
 	esac
 
@@ -662,17 +750,31 @@ function update_tmux_windows_for_project() {
 function create_tmux_windows_for_project() {
 	local tmux_session_name="$1"
 	local project="$2"
-	local replace_first_window="$3"
-	local create='true'
-	update_tmux_windows_for_project "$tmux_session_name" "$project" "$replace_first_window" "$create"
+	local update_type="$tmux_update_type_create"
+	update_tmux_windows_for_project "$tmux_session_name" "$project" "$update_type"
 }
 
-function remove_tmux_windows_for_project() {
+function delete_tmux_windows_for_project() {
 	local tmux_session_name="$1"
 	local project="$2"
-	local replace_first_window="$3"
-	local create='false'
-	update_tmux_windows_for_project "$tmux_session_name" "$project" "$replace_first_window" "$create"
+	local update_type="$tmux_update_type_delete"
+	update_tmux_windows_for_project "$tmux_session_name" "$project" "$update_type"
+}
+
+function stop_tmux_windows_for_project() {
+	local tmux_session_name="$1"
+	local project="$2"
+	local update_type="$tmux_update_type_kill_sig"
+	update_tmux_windows_for_project "$tmux_session_name" "$project" "$update_type"
+}
+
+function load_env_var_in_tmux_windows_for_project() {
+	local tmux_session_name="$1"
+	local project="$2"
+	local env_var_key="$3"
+	local env_var_value="$4"
+	local update_type="$tmux_update_type_set_env_var"
+	update_tmux_windows_for_project "$tmux_session_name" "$project" "$update_type" "$env_var_key" "$env_var_value"
 }
 
 
@@ -706,6 +808,7 @@ function handle_base_options() {
 	return 0
 }
 
+# TODO: Check that om is in the PATH
 function check_env() {
 	local set_verbose="$1"
 	local verbose='false'
@@ -867,7 +970,8 @@ function run() {
 	return 0
 }
 
-# TODO: Figure out how to make this work as expected - currently has strange behaviour with the A...B
+# TODO: This does not do exactly what you want it to do when going from develop to QA
+# TODO: This only looks at local branches - we should be looking at remote branches if they are further ahead
 function has_file_changes_between_branches_based_on_pattern() {
 	local project="$1"
 	local branch_from="$2"
@@ -898,9 +1002,6 @@ function refresh_tmux_windows_for_project() {
 	local project_dir="${project_dirs[$project_i]}"
 	local project_type="${project_types[$project_i]}"
 
-	# TODO: Remove debugging $project
-	tmux new-window -da -t "$tmux_session_name:{end}" -n "$project-$tmux_default_window_name" || return 1
-
 	case "$project_type" in
 		"$project_type_django")
 			# If there is a currently running session, check what the most effecient way to update is.
@@ -923,25 +1024,29 @@ function refresh_tmux_windows_for_project() {
 			local project_celery_app_name="${project_celery_app_names[$project_i]}"
 			local project_port="${project_ports[$project_i]}"
 
-			printf "run_install = $run_install\n"
-			printf "run_migrations = $run_migrations\n"
-			printf "load_ts_templates = $load_ts_templates\n"
+			printf "$project run_install = $run_install\n"
+			printf "$project run_migrations = $run_migrations\n"
+			printf "$project load_ts_templates = $load_ts_templates\n"
 
 			if [[ -n "$project_celery_app_name" && -n "$branch_from" ]]; then
+				# Celery needs to be restarted for any change in code, database or packages
 				tmux send-keys -t "$tmux_session_name:$win_name_celery.0" "C-c" "C-l" || return 1
 				tmux send-keys -t "$tmux_session_name:$win_name_celery.1" "C-c" "C-l" || return 1
 			fi
 
 			if [[ ( "$run_install" = 'true' || "$force_reload" = 'true' ) && -n "$branch_from" ]]; then
+				# The django server only needs restarting for changes in packages
 				tmux send-keys -t "$tmux_session_name:$win_name_django" "C-c" "C-l" || return 1
 			fi
 
-			tmux send-keys -t "$tmux_session_name:$project-$tmux_default_window_name" \
+			# Setups the new branch in the most effecient way possible, blocking further execution till it succeeds
+			tmux send-keys -t "$tmux_session_name:$tmux_window_name_worker" \
 				"om script-run run_command_with_tmux_unlock $tmux_default_lock_channel " \
 				"setup_project_branch $project $run_install $branch_to $run_migrations $load_ts_templates" "C-m" || return 1
 			tmux wait-for $tmux_default_lock_channel
 
 			if [[ -n "$project_celery_app_name" ]]; then
+				# Start up celery once branch is loaded
 				tmux send-keys -t "$tmux_session_name:$win_name_celery.0" \
 					"om script-run run_django_start_celery $project $project_celery_app_name high_priority" "C-m" || return 1
 				tmux send-keys -t "$tmux_session_name:$win_name_celery.1" \
@@ -949,12 +1054,15 @@ function refresh_tmux_windows_for_project() {
 			fi
 
 			if [[ "$run_install" = 'true' || "$force_reload" = 'true' ]]; then
+				# Start up django server if new packages were installed or if window was just opened
 				tmux send-keys -t "$tmux_session_name:$win_name_django" \
 					"om script-run run_django_start_server $project $project_port" "C-m" || return 1
 			fi
 			;;
 
 		"$project_type_node")
+			# If there is a currently running session, check what the most effecient way to update is.
+			# Otherwise update everything
 			if [[ -n "$branch_from" ]]; then
 				local run_install="$(has_file_changes_between_branches_based_on_pattern "$project" "$branch_from" \
 					"$branch_to" "$file_pattern_py_requirments" )"
@@ -964,14 +1072,16 @@ function refresh_tmux_windows_for_project() {
 
 			local win_name_npm_watch="${project}${tmux_win_name_npm_watch_suffix}"
 
-			printf "run_install = $run_install\n"
+			printf "$project run_install = $run_install\n"
 
 			if [[ "$run_install" = 'true' || "$force_reload" = 'true' ]]; then
+				# If node requirements have changed, npm watch needs to be restarted
 				if [[ -n "$branch_from" ]]; then
 					tmux send-keys -t "$tmux_session_name:$win_name_npm_watch" "C-c" "C-l" || return 1
 				fi
 
-				tmux send-keys -t "$tmux_session_name:$project-$tmux_default_window_name" \
+				# Setups the new branch in the most effecient way possible, blocking further execution till it succeeds
+				tmux send-keys -t "$tmux_session_name:$tmux_window_name_worker" \
 					"om script-run run_command_with_tmux_unlock $tmux_default_lock_channel " \
 					"setup_project_branch $project $run_install $branch_to" "C-m" || return 1
 				tmux wait-for $tmux_default_lock_channel
@@ -979,22 +1089,52 @@ function refresh_tmux_windows_for_project() {
 					"om script-run run_npm_run_watch $project" "C-m" || return 1
 			else
 				# No need to restart the npm watch if there are no changes in the node requirements
-				tmux send-keys -t "$tmux_session_name:$project-$tmux_default_window_name" \
+				tmux send-keys -t "$tmux_session_name:$tmux_window_name_worker" \
 					"om script-run setup_project_branch $project $run_install $branch_to" "C-m" || return 1
 			fi
 			;;
 	esac
 
-	# TODO: Uncomment out this once debugging is done
-	# tmux kill-window -t "$tmux_session_name:$tmux_default_window_name"
+	return 0
+}
+
+function create_tmux_worker_window() {
+	local tmux_session_name="$1"
+	local tmux_windows=( $(tmux list-windows -t "$tmux_session_name" -F "#{window_name}") )
+
+	# Creates the windows necessary for the project
+	if ! is_in_array "$tmux_window_name_worker" "${tmux_windows[@]}"; then
+		tmux new-window -dk -t "$tmux_session_name:0" -n "$tmux_window_name_worker" || return 1
+	fi
+
+	return 0
+}
+
+function delete_tmux_worker_window() {
+	local tmux_session_name="$1"
+	local tmux_windows=( $(tmux list-windows -t "$tmux_session_name" -F "#{window_name}") )
+
+	# Creates the windows necessary for the project
+	if is_in_array "$tmux_window_name_worker" "${tmux_windows[@]}"; then
+		tmux kill-window -t "$tmux_session_name:$tmux_window_name_worker"
+	fi
 
 	return 0
 }
 
 # TODO: Get this to work for all types of input combinations - 3 projects or 1 - including the settings_local.py
 function build() {
-	local ba_branch_to="$1"
-	local old_build_running='false'
+	local -ia possible_project_indices=("$proj_i_ba" "$proj_i_ba_node" "$proj_i_om" "$proj_i_kod")
+	local -ia tmux_sesh_name_project_indices=("$proj_i_ba" "$proj_i_om" "$proj_i_kod")
+	# TODO: ba-node should be independant but it messes with the environ variables
+	local -ia dependant_project_indices=("$proj_i_ba" "$proj_i_ba_node")
+	local -ia independant_project_indices=("$proj_i_om" "$proj_i_kod")
+
+	local -a project_branches_from
+	local -a project_branches_to
+
+	project_branches_to[$proj_i_ba]="$1"
+	project_branches_to[$proj_i_ba_node]="$1"
 
 	if [[ $# -eq 0 ]]; then
 		print_format "$style_error" "$message_not_enough_args"
@@ -1014,7 +1154,7 @@ function build() {
 							print_format "$style_error" "$message_incorrect_num_of_args"
 							return 1
 						else
-							local om_branch_to="$branch"
+							project_branches_to[$proj_i_om]="$branch"
 						fi
 						;;
 					"$option_kod"|"$option_kod_short")
@@ -1022,7 +1162,7 @@ function build() {
 							print_format "$style_error" "$message_incorrect_num_of_args"
 							return 1
 						else
-							local kod_branch_to="$branch"
+							project_branches_to[$proj_i_kod]="$branch"
 						fi
 						;;
 				esac
@@ -1035,23 +1175,29 @@ function build() {
 		done
 	fi
 
-	printf "%s\n" "ba_branch_to = $ba_branch_to"
-	printf "%s\n" "om_branch_to = $om_branch_to"
-	printf "%s\n" "kod_branch_to = $kod_branch_to"
+	printf "%s\n" "ba_branch_to = ${project_branches_to[$proj_i_ba]}"
+	printf "%s\n" "ba_node_branch_to = ${project_branches_to[$proj_i_ba_node]}"
+	printf "%s\n" "om_branch_to = ${project_branches_to[$proj_i_om]}"
+	printf "%s\n" "kod_branch_to = ${project_branches_to[$proj_i_kod]}"
 
 	# Starts tmux server only if it is not already running
-	tmux start-server
+	tmux start-server || return 1
 
 	# TODO: Figure out how to fix this hack - why is it not working in the script?
 	local tmux_session_rematch=( $(get_running_tmux_session_with_regex "$sesh_name_regex") )
 	get_running_tmux_session_with_regex "$sesh_name_regex" &> /dev/null
 
 	local tmux_session_rematch_ret=$?
-	local tmux_sesh_name_new="${script_name}${sesh_name_sep}${project_ba_short}=${ba_branch_to}"
-	tmux_sesh_name_new+="$([[ -z "$om_branch_to" ]] || printf "${sesh_name_sep}${project_om_short}=${om_branch_to}")"
-	tmux_sesh_name_new+="$([[ -z "$kod_branch_to" ]] || printf "${sesh_name_sep}${project_kod_short}=${kod_branch_to}")"
+	local tmux_sesh_name_new="${script_name}"
 
-	printf "ret_value = $tmux_session_rematch_ret\n"
+	for proj_i in "${tmux_sesh_name_project_indices[@]}"; do
+		local branch_to="${project_branches_to[$proj_i]}"
+
+		if [[ -n "$branch_to" ]]; then
+			local short_name="${project_short_names[$proj_i]}"
+			tmux_sesh_name_new+="${sesh_name_sep}${short_name}=${branch_to}"
+		fi
+	done
 
 	if [[ $tmux_session_rematch_ret -ge 2 ]]; then
 		# Multiple tmux sessions were found, exiting with error
@@ -1059,9 +1205,7 @@ function build() {
 
 	elif [[ $tmux_session_rematch_ret -eq 1 ]]; then
 		# No tmux session was found - creating new environment
-		tmux new-session -d -s "$tmux_sesh_name_new" -n "$tmux_default_window_name"
-		# create_tmux_windows_for_project "$tmux_sesh_name_new" "$project_ba_short" 'true'
-		# create_tmux_windows_for_project "$tmux_sesh_name_new" "$project_ba_node_short" 'false'
+		tmux new-session -d -s "$tmux_sesh_name_new" -n "$tmux_window_name_default"
 
 	else
 		# Tmux session found, pulling old branch names and updating project windows
@@ -1072,56 +1216,99 @@ function build() {
 			local -i after_match_index=$((i + 1))
 
 			if is_valid_project_tag_for_build_command "$match"; then
-				case "$match" in
-					"$project_ba_short")
-						local ba_branch_from="${tmux_session_rematch[$after_match_index]}"
-						;;
-					"$project_om_short")
-						local om_branch_from="${tmux_session_rematch[$after_match_index]}"
-						;;
-					"$project_kod_short")
-						local kod_branch_from="${tmux_session_rematch[$after_match_index]}"
-						;;
-				esac
+				local project="$match"
+				local -i project_i=$(get_project_index "$project")
+				project_branches_from[$project_i]="${tmux_session_rematch[$after_match_index]}"
+
 			fi
 		done
 
-		tmux rename-session -t "$tmux_sesh_name_old" "$tmux_sesh_name_new"
+		# TODO: Temporarily hard-coded for ba-node to get ba's branch. Need a more general
+		# way to define this behaviour for project-pairs
+		project_branches_from[$proj_i_ba_node]="${project_branches_from[$proj_i_ba]}"
+
+		tmux rename-session -t "$tmux_sesh_name_old" "$tmux_sesh_name_new" || return 1
 	fi
 
-	printf "%s\n" "ba_branch_from = $ba_branch_from"
-	printf "%s\n" "om_branch_from = $om_branch_from"
-	printf "%s\n" "kod_branch_from = $kod_branch_from"
+	create_tmux_worker_window "$tmux_sesh_name_new" || return 1
 
-	if [[ -n "$om_branch_to" ]]; then
-		create_tmux_windows_for_project "$tmux_sesh_name_new" "$project_om_short" 'false'
-		# TODO: Are these exposed in the places that they are needed?
-		export $env_var_om_url="$url_om_local"
-	else
-		remove_tmux_windows_for_project "$tmux_sesh_name_new" "$project_om_short" 'false'
-		export $env_var_om_url="$url_om_default"
-	fi
+	printf "%s\n" "ba_branch_from = ${project_branches_from[$proj_i_ba]}"
+	printf "%s\n" "ba_node_branch_from = ${project_branches_from[$proj_i_ba_node]}"
+	printf "%s\n" "om_branch_from = ${project_branches_from[$proj_i_om]}"
+	printf "%s\n" "kod_branch_from = ${project_branches_from[$proj_i_kod]}"
 
-	if [[ -n "$kod_branch_to" ]]; then
-		create_tmux_windows_for_project "$tmux_sesh_name_new" "$project_kod_short" 'false'
-		export $env_var_kod_url="$url_kod_local"
-	else
-		remove_tmux_windows_for_project "$tmux_sesh_name_new" "$project_kod_short" 'false'
-		export $env_var_kod_url="$url_kod_default"
-	fi
+	local -a env_vars_to_set
 
-	# Update the tmux session with new code in the most effecient way possible - services are only restarted if required
-	# TODO: Implement force refresh?
-	refresh_tmux_windows_for_project "$tmux_sesh_name_new" "$project_ba_short" "$ba_branch_from" "$ba_branch_to" || return 1
-	refresh_tmux_windows_for_project "$tmux_sesh_name_new" "$project_ba_node_short" "$ba_branch_from" "$ba_branch_to" || return 1
+	# Load independent projects first and capture env variables needed for dependent projects
+	for proj_i in "${independant_project_indices[@]}"; do
+		printf "\n"
+		printf "proj_i = $proj_i\n"
 
-	if [[ -n "$om_branch_to" ]]; then
-		refresh_tmux_windows_for_project "$tmux_sesh_name_new" "$project_om_short" "$om_branch_from" "$om_branch_to" || return 1
-	fi
+		local branch_from="${project_branches_from[$proj_i]}"
+		local branch_to="${project_branches_to[$proj_i]}"
+		local proj_short_name="${project_short_names[$proj_i]}"
+		local env_var_url_i="${project_env_var_url_indices[$proj_i]}"
 
-	if [[ -n "$kod_branch_to" ]]; then
-		refresh_tmux_windows_for_project "$tmux_sesh_name_new" "$project_kod_short" "$kod_branch_from" "$kod_branch_to" || return 1
-	fi
+		printf "proj_short_name = $proj_short_name\n"
+		printf "branch_from = $branch_from\n"
+		printf "branch_to = $branch_to\n"
+		printf "env_var_url_i = $env_var_url_i\n"
+
+		if [[ -n "$branch_to" ]]; then
+			create_tmux_windows_for_project "$tmux_sesh_name_new" "$proj_short_name" || return 1
+			refresh_tmux_windows_for_project "$tmux_sesh_name_new" "$proj_short_name" "$branch_from" "$branch_to" 'false' || return 1
+			local env_var_url="${project_env_var_url_local[$proj_i]}"
+
+		else
+			delete_tmux_windows_for_project "$tmux_sesh_name_new" "$proj_short_name" || return 1
+			local env_var_url="${project_env_var_url_default[$proj_i]}"
+		fi
+
+		env_vars_to_set["$env_var_url_i"]="$env_var_url"
+	done
+
+	for ev in "${env_vars_to_set[@]}"; do
+		printf "%s\n" "$ev"
+	done
+
+	# Load dependent projects and add env variables from the independent projects
+	for proj_i in "${dependant_project_indices[@]}"; do
+		printf "\n"
+		printf "proj_i = $proj_i\n"
+
+		local branch_from="${project_branches_from[$proj_i]}"
+		local branch_to="${project_branches_to[$proj_i]}"
+		local proj_short_name="${project_short_names[$proj_i]}"
+		local env_var_url_i="${project_env_var_url_indices[$proj_i]}"
+
+		printf "proj_short_name = $proj_short_name\n"
+		printf "branch_from = $branch_from\n"
+		printf "branch_to = $branch_to\n"
+		printf "env_var_url_i = $env_var_url_i\n"
+
+		if [[ -n "$branch_to" ]]; then
+			create_tmux_windows_for_project "$tmux_sesh_name_new" "$proj_short_name" || return 1
+
+			# Stop tmux window process and add the necessary environment variables to them
+			stop_tmux_windows_for_project "$tmux_sesh_name_new" "$proj_short_name" || return 1
+			for env_var_i in "${!env_vars_to_set[@]}"; do
+				local env_var_key="${env_var_url_names[$env_var_i]}"
+				local env_var_value="${env_vars_to_set[$env_var_i]}"
+				printf "Setting env variable $env_var_key=$env_var_value\n"
+				load_env_var_in_tmux_windows_for_project "$tmux_sesh_name_new" "$proj_short_name" \
+					"$env_var_key" "$env_var_value" || return 1
+			done
+
+			refresh_tmux_windows_for_project "$tmux_sesh_name_new" "$proj_short_name" "$branch_from" "$branch_to" 'true' || return 1
+
+		else
+			delete_tmux_windows_for_project "$tmux_sesh_name_new" "$proj_short_name" || return 1
+		fi
+
+		env_vars_to_set["$env_var_url_i"]="$env_var_url"
+	done
+
+	# tmux kill-window -t "$tmux_session_name:$tmux_window_name_default"
 
 	return 0
 }
