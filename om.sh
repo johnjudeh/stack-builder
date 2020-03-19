@@ -73,6 +73,11 @@ readonly -a project_dirs=(
 	[$proj_i_kod]="$KOD_ROOT"
 )
 
+readonly -a tracked_projects=("$proj_i_ba")
+readonly -a project_tracked_by=(
+	[$proj_i_ba]="$proj_i_ba_node"
+)
+
 readonly virtual_env_type_py='py'
 readonly virtual_env_type_node='node'
 readonly -a project_virtual_env_types=(
@@ -198,7 +203,7 @@ readonly tmux_win_name_django_suffix='_django'
 readonly tmux_win_name_celery_suffix='_celery'
 readonly tmux_win_name_npm_watch_suffix='_npm_w'
 readonly sesh_name_sep=';'
-readonly sesh_name_regex="^${script_name}(${sesh_name_sep}($project_ba_short)=([0-9A-z_\-\/]+))?(${sesh_name_sep}($project_om_short)=([0-9A-z_\-\/]+))?(${sesh_name_sep}($project_kod_short)=([0-9A-z_\-\/]+))?$"
+readonly sesh_name_regex="^${script_name}(${sesh_name_sep}($project_ba_short)=([0-9A-z_/.-]+))?(${sesh_name_sep}($project_om_short)=([0-9A-z_/.-]+))?(${sesh_name_sep}($project_kod_short)=([0-9A-z_/.-]+))?$"
 
 readonly tmux_update_type_create='create'
 readonly tmux_update_type_delete='delete'
@@ -1216,12 +1221,13 @@ function build() {
 				local -i project_i=$(get_project_index "$project")
 				project_branches_from[$project_i]="${tmux_session_rematch[$after_match_index]}"
 
+				# This is for projects in the same git repository as another project and therefore track its branch
+				if is_in_array "$project_i" "${tracked_projects[@]}"; then
+					local tracking_project_i="${project_tracked_by[$project_i]}"
+					project_branches_from[$tracking_project_i]="${project_branches_from[$project_i]}"
+				fi
 			fi
 		done
-
-		# TODO: Temporarily hard-coded for ba-node to get ba's branch. Need a more general
-		# way to define this behaviour for project-pairs
-		project_branches_from[$proj_i_ba_node]="${project_branches_from[$proj_i_ba]}"
 
 		tmux rename-session -t "$tmux_sesh_name_old" "$tmux_sesh_name_new" || return 1
 	fi
