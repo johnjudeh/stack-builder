@@ -342,11 +342,11 @@ function print_format() {
 
 	case "$type" in
 		"$style_command_title")
-			printf "${fm_yellow}==>${fm_reset} $2\n"
-			printf "%s\n" "------------------------------------------------------------" 
+			printf "\n%s\n" "${fm_yellow}${fm_bold}TASK:${fm_reset} ${msg}"
+			printf "%s\n" "--------------------------------------------------------------"
 			;;
 		"$style_error")
-			printf "${fm_red}ERR!${fm_reset} $2\n" 1>&2
+			printf "${fm_red}ERR!${fm_reset} $msg\n" 1>&2
 			;;
 	esac
 
@@ -996,6 +996,7 @@ function check_env() {
 	return 0
 }
 
+# TODO: Make sure this works with OM_URL and KOD_URL
 function freeze() {
 	local project="$1"
 	local -i project_i=$(get_project_index "$project")
@@ -1175,11 +1176,6 @@ function build() {
 		done
 	fi
 
-	printf "%s\n" "ba_branch_to = ${project_branches_to[$proj_i_ba]}"
-	printf "%s\n" "ba_node_branch_to = ${project_branches_to[$proj_i_ba_node]}"
-	printf "%s\n" "om_branch_to = ${project_branches_to[$proj_i_om]}"
-	printf "%s\n" "kod_branch_to = ${project_branches_to[$proj_i_kod]}"
-
 	# Starts tmux server only if it is not already running
 	tmux start-server || return 1
 
@@ -1231,11 +1227,6 @@ function build() {
 	fi
 
 	create_tmux_worker_window "$tmux_sesh_name_new" || return 1
-
-	printf "%s\n" "ba_branch_from = ${project_branches_from[$proj_i_ba]}"
-	printf "%s\n" "ba_node_branch_from = ${project_branches_from[$proj_i_ba_node]}"
-	printf "%s\n" "om_branch_from = ${project_branches_from[$proj_i_om]}"
-	printf "%s\n" "kod_branch_from = ${project_branches_from[$proj_i_kod]}"
 
 	local -a env_vars_to_set
 
@@ -1318,7 +1309,7 @@ function build() {
 		env_vars_to_set["$env_var_url_i"]="$env_var_url"
 	done
 
-	# tmux kill-window -t "$tmux_session_name:$tmux_window_name_default"
+	delete_tmux_worker_window "$tmux_sesh_name_new" || return 1
 
 	return 0
 }
