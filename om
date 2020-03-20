@@ -1184,10 +1184,8 @@ function build() {
 	# Starts tmux server only if it is not already running
 	tmux start-server || return 1
 
-	# TODO: Figure out how to fix this hack - why is it not working in the script?
-	local tmux_session_rematch=( $(get_running_tmux_session_with_regex "$sesh_name_regex") )
-	get_running_tmux_session_with_regex "$sesh_name_regex" &> /dev/null
-
+	local -a tmux_session_rematch
+	tmux_session_rematch=( $(get_running_tmux_session_with_regex "$sesh_name_regex") )
 	local tmux_session_rematch_ret=$?
 	local tmux_sesh_name_new="${script_name}"
 
