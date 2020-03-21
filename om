@@ -347,7 +347,7 @@ function print_format() {
 
 	case "$type" in
 		"$style_command_title")
-			printf "\n%s\n" "${fm_yellow}${fm_bold}TASK:${fm_reset} ${msg}"
+			printf "\n%s\n" "${fm_yellow}${fm_bold}TASK:${fm_reset} ${fm_bold}${msg}${fm_reset}"
 			printf "%s\n" "--------------------------------------------------------------"
 			;;
 		"$style_error")
