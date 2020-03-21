@@ -1,0 +1,60 @@
+{
+	"projects": [
+		{
+			"name": "bankangle",
+			"shortName": "ba",
+			"type": "django",
+			"port": 8000,
+			"celeryAppName": "bankangle",
+			"loadTermsheetTemplates": true,
+			"environmentVariables": {
+				"rootDir": "BA_ROOT",
+				"dbName": "BA_DB",
+				"envName": "BA_VENV"
+			}
+		},
+		{
+			"name": "bankangle-node",
+			"shortName": "ba-node",
+			"type": "node",
+			"tracksProject": "bankangle",
+			"environmentVariables": {
+				"rootDir": "BA_NODE_ROOT",
+				"envName": "BA_NODE_NENV"
+			}
+		},
+		{
+			"name": "om-elements",
+			"shortName": "om",
+			"type": "node",
+			"urls": {
+				"local": "file://$OM_ROOT/dist/om-app",
+				"default": "https://dev.originmarkets-dev.com/angular/",
+				"develop": "https://dev.originmarkets-dev.com/angular/",
+				"qa": "https://qa.originmarkets-dev.com/angular/",
+				"master": "https://login2.originmarkets.com/angular/"
+			},
+			"environmentVariables": {
+				"rootDir": "OM_ROOT",
+				"envName": "OM_NENV",
+				"url": "OM_URL"
+			}
+		},
+		{
+			"name": "kodiak",
+			"shortName": "kod",
+			"type": "django",
+			"urls": {
+				"local": "http://127.0.0.1:8002",
+				"default": "https://kodiak.originmarkets-labs.com/",
+				"develop": "https://kodiak.originmarkets-dev.com/"
+			},
+			"port": 8002,
+			"environmentVariables": {
+				"rootDir": "KOD_ROOT",
+				"dbName": "KOD_DB",
+				"envName": "KOD_VENV"
+			}
+		}
+	]
+}
