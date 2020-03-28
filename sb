@@ -1330,11 +1330,11 @@ function run() {
 	return 0
 }
 
-# TODO: Check that om is in the PATH
 function check() {
 	local set_verbose="$1"
 	local verbose='false'
 	local vars_missing='false'
+	local command_on_path='true'
 
 	if [[ "$verbose_mode" = 'true' || "$set_verbose" = 'true' ]]; then
 		local verbose='true'
@@ -1344,17 +1344,27 @@ function check() {
 	for ev in "${env_vars_required[@]}"; do
 		if [[ -z "${!ev+x}" ]]; then
 			local vars_missing='true'
-			printf "Checking '$ev'... ${fm_red}UNSET${fm_reset}\n"
+			printf "Checking '$ev' is set... ${fm_red}UNSET${fm_reset}\n"
 		else
 			if [[ "$verbose" = 'true' ]]; then
-				printf "Checking '$ev'... ${fm_green}OK${fm_reset}\n"
+				printf "Checking '$ev' is set... ${fm_green}OK${fm_reset}\n"
 			fi
 		fi
 	done
 
-	if [[ "$vars_missing" = 'true' ]]; then
+	# Checks if the script is on the PATH
+	if command -v "$script_name" &>/dev/null; then
+		if [[ "$verbose" = 'true' ]]; then
+			printf "Checking '$script_name' is on PATH... ${fm_green}OK${fm_reset}\n"
+		fi
+	else
+		command_on_path='false'
+		printf "Checking '$script_name' is on PATH... ${fm_red}NOT FOUND${fm_reset}\n"
+	fi
+
+	if [[ "$vars_missing" = 'true' || "$command_on_path" = 'false' ]]; then
 		printf "\n${fm_red}CHECK FAILED${fm_reset}\n"
-		printf "Please set the ${fm_red}UNSET${fm_reset} environment variables above before running the program\n"
+		printf "Please resolve issues in ${fm_red}RED${fm_reset} before running the program\n"
 		return 1
 	elif [[ "$verbose" = 'true' ]]; then
 		printf "\n${fm_green}CHECK PASSED${fm_reset}\n"
@@ -1389,34 +1399,33 @@ function handle_command() {
 	local command="$1"
 
 	load_config || return 1
-	check || return 1
 
 	shift
 
 	case "$command" in
 		"$command_build")
-			build "$@" || return 1
+			check && build "$@" || return 1
 			;;
 		"$command_freeze")
-			freeze "$@" || return 1
+			check && freeze "$@" || return 1
 			;;
 		"$command_restore")
-			restore "$@" || return 1
+			check && restore "$@" || return 1
 			;;
 		"$command_run")
-			run "$@" || return 1
+			check && run "$@" || return 1
 			;;
 		"$command_check")
 			check 'true' || return 1
 			;;
 		"$command_print_config")
-			print_config || return 1
+			check && print_config || return 1
 			;;
 		"$command_reset")
-			reset || return 1
+			check && reset || return 1
 			;;
 		"$command_scipt_run")
-			script_run "$@" || return 1
+			check && script_run "$@" || return 1
 			;;
 	esac
 
