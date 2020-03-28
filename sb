@@ -1079,22 +1079,22 @@ function refresh_tmux_windows_for_project() {
 
 			# Setups the new branch in the most effecient way possible, blocking further execution till it succeeds
 			tmux send-keys -t "$tmux_session_name:$tmux_window_name_worker" \
-				"om script-run run_command_with_tmux_unlock $tmux_default_lock_channel " \
+				"$script_name $command_scipt_run run_command_with_tmux_unlock $tmux_default_lock_channel " \
 				"setup_project_branch $project $run_install $branch_to $run_migrations $load_ts_templates" "C-m" || return 1
 			tmux wait-for $tmux_default_lock_channel
 
 			if [[ -n "$project_celery_app_name" ]]; then
 				# Start up celery once branch is loaded
 				tmux send-keys -t "$tmux_session_name:$win_name_celery.0" \
-					"om script-run run_django_start_celery $project $project_celery_app_name high_priority" "C-m" || return 1
+					"$script_name $command_scipt_run run_django_start_celery $project $project_celery_app_name high_priority" "C-m" || return 1
 				tmux send-keys -t "$tmux_session_name:$win_name_celery.1" \
-					"om script-run run_django_start_celery $project $project_celery_app_name" "C-m" || return 1
+					"$script_name $command_scipt_run run_django_start_celery $project $project_celery_app_name" "C-m" || return 1
 			fi
 
 			if [[ "$run_install" = 'true' || "$force_reload" = 'true' ]]; then
 				# Start up django server if new packages were installed or if window was just opened
 				tmux send-keys -t "$tmux_session_name:$win_name_django" \
-					"om script-run run_django_start_server $project $project_port" "C-m" || return 1
+					"$script_name $command_scipt_run run_django_start_server $project $project_port" "C-m" || return 1
 			fi
 			;;
 
@@ -1120,15 +1120,15 @@ function refresh_tmux_windows_for_project() {
 
 				# Setups the new branch in the most effecient way possible, blocking further execution till it succeeds
 				tmux send-keys -t "$tmux_session_name:$tmux_window_name_worker" \
-					"om script-run run_command_with_tmux_unlock $tmux_default_lock_channel " \
+					"$script_name $command_scipt_run run_command_with_tmux_unlock $tmux_default_lock_channel " \
 					"setup_project_branch $project $run_install $branch_to" "C-m" || return 1
 				tmux wait-for $tmux_default_lock_channel
 				tmux send-keys -t "$tmux_session_name:$win_name_npm_watch" \
-					"om script-run run_npm_run_watch $project" "C-m" || return 1
+					"$script_name $command_scipt_run run_npm_run_watch $project" "C-m" || return 1
 			else
 				# No need to restart the npm watch if there are no changes in the node requirements
 				tmux send-keys -t "$tmux_session_name:$tmux_window_name_worker" \
-					"om script-run setup_project_branch $project $run_install $branch_to" "C-m" || return 1
+					"$script_name $command_scipt_run setup_project_branch $project $run_install $branch_to" "C-m" || return 1
 			fi
 			;;
 	esac
