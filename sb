@@ -128,6 +128,40 @@ readonly file_pattern_node_requirements='*package.json*'
 readonly file_pattern_django_migrations='*migrations*'
 readonly file_pattern_ts_templates='*fixtures/termsheet_templates*'
 
+readonly cfg_required_key_name='name'
+readonly cfg_required_key_short_name='shortName'
+readonly cfg_required_key_cli_char='cliChar'
+readonly cfg_required_key_type='type'
+readonly cfg_required_key_dependant='dependant'
+readonly cfg_required_key_env_variables='environmentVariables'
+readonly -a cfg_project_required_fields=(
+	"$cfg_required_key_name"
+	"$cfg_required_key_short_name"
+	"$cfg_required_key_cli_char"
+	"$cfg_required_key_type"
+	"$cfg_required_key_dependant"
+	"$cfg_required_key_env_variables"
+)
+
+readonly cfg_required_env_variable_key_root_dir='rootDir'
+readonly cfg_required_env_variable_key_env_name='envName'
+readonly -a cfg_project_required_env_variable_fields=(
+	"$cfg_required_env_variable_key_root_dir"
+	"$cfg_required_env_variable_key_env_name"
+)
+
+readonly -a cfg_allowed_project_types=("$project_type_django" "$project_type_node")
+
+readonly cfg_django_required_key_port='port'
+readonly -a cfg_django_required_fields=("$cfg_django_required_key_port")
+
+readonly cfg_django_required_env_variable_key_db_name='dbName'
+readonly -a cfg_django_required_env_variable_fields=("$cfg_django_required_env_variable_key_db_name")
+
+readonly cfg_required_url_default='default'
+readonly cfg_required_url_local='local'
+readonly -a cfg_required_urls=("$cfg_required_url_default" "$cfg_required_url_local")
+
 
 ######## CONFIG VARIABLES  ########
 
@@ -169,23 +203,22 @@ function load_config() {
 	fi
 
 	local config_json_content="$(<"$config_filepath")"
-	# validate_config "$config_json_content"
+	validate_config "$config_json_content" || return 1
 
 	# Parse config file from memory
-	local config_projects_content="$(echo $config_json_content | jq ".projects")"
-	local num_of_projects="$(echo $config_projects_content | jq "length")"
+	local num_of_projects="$(echo $config_json_content | jq ".projects | length")"
 
 	# Load required config parameters for each project
 	for ((i=0; i<$num_of_projects; i++)); do
-		local config_project_content="$(echo $config_projects_content | jq ".[$i]")"
+		local config_project_content="$(echo $config_json_content | jq ".projects[$i]")"
 		local project_name="$(echo $config_project_content | jq -r ".name")"
 		local project_short_name="$(echo $config_project_content | jq -r ".shortName")"
 		local project_cli_char="$(echo $config_project_content | jq -r ".cliChar")"
 		local project_type="$(echo $config_project_content | jq -r ".type")"
 		local project_is_dependant="$(echo $config_project_content | jq -r ".dependant")"
+		local project_has_urls="$(echo $config_project_content | jq -r 'has("urls")')"
 		local project_track_project="$(echo $config_project_content | jq -r 'has("tracksProject")')"
 		local project_env_variables="$(echo $config_project_content | jq -r ".environmentVariables")"
-		local project_has_url="$(echo $project_env_variables | jq -r 'has("url")')"
 		local project_dir_env_var="$(echo $project_env_variables | jq -r ".rootDir")"
 		local project_env_name_env_var="$(echo $project_env_variables | jq -r ".envName")"
 		local project_dir="${!project_dir_env_var}"
@@ -221,7 +254,7 @@ function load_config() {
 			independant_project_indices+=("${project_index}")
 		fi
 
-		if [[ "$project_has_url" = 'true' ]]; then
+		if [[ "$project_has_urls" = 'true' ]]; then
 			# TODO: Implement arbitrary url names
 			local url_env_var_name="$(echo $project_env_variables | jq -r ".url")"
 			local url_local="$(echo $config_project_content | jq -r ".urls.local")"
@@ -278,7 +311,112 @@ function load_config() {
 }
 
 function validate_config() {
-	print_format "$style_error" "Not implemented"
+	local config_json_content="$1"
+	local validation_failed='false'
+	local num_of_projects="$(echo $config_json_content | jq ".projects | length")"
+
+	# Load required config parameters for each project
+	for ((i=0; i<$num_of_projects; i++)); do
+		local required_keys_missing='false'
+		local required_keys_missing_for_proj_type='false'
+		local required_env_variable_keys_missing='false'
+		local required_env_variable_keys_missing_for_proj_type='false'
+		local project_type_invalid='false'
+		local url_keys_missing='false'
+
+		local -a missing_required_keys
+		local -a missing_required_keys_for_proj_type
+		local -a missing_required_env_variable_keys
+		local -a missing_required_env_variable_keys_for_proj_type
+		local -a missing_urls_keys
+
+		local config_project_content="$(echo $config_json_content | jq ".projects[$i]")"
+		local project_name="$(echo $config_project_content | jq -r ".name")"
+		local project_type="$(echo $config_project_content | jq -r ".type")"
+		local project_has_urls="$(echo $config_project_content | jq -r 'has("urls")')"
+		local config_project_env_variables="$(echo $config_project_content | jq ".environmentVariables")"
+
+		for key in "${cfg_project_required_fields[@]}"; do
+			if [[ "$(echo "$config_project_content" | jq -r "has(\"$key\")")" = 'false' ]]; then
+				required_keys_missing='true'
+				missing_required_keys+=("$key")
+			fi
+		done
+
+		for key in "${cfg_project_required_env_variable_fields[@]}"; do
+			if [[ "$(echo "$config_project_env_variables" | jq -r "has(\"$key\")")" = 'false' ]]; then
+				required_env_variable_keys_missing='true'
+				missing_required_env_variable_keys+=("$key")
+			fi
+		done
+
+		if ! is_in_array "$project_type" "${cfg_allowed_project_types[@]}"; then
+			project_type_invalid='true'
+			print_format "$style_error" "Project $i '$project_name' has invalid type"
+
+		else
+			case "$project_type" in
+				"$project_type_django")
+					for key in "${cfg_django_required_fields[@]}"; do
+						if [[ "$(echo "$config_project_content" | jq -r "has(\"$key\")")" = 'false' ]]; then
+							required_keys_missing_for_proj_type='true'
+							missing_required_keys_for_proj_type+=("$key")
+						fi
+					done
+
+					for key in "${cfg_django_required_env_variable_fields[@]}"; do
+						if [[ "$(echo "$config_project_env_variables" | jq -r "has(\"$key\")")" = 'false' ]]; then
+							required_env_variable_keys_missing_for_proj_type='true'
+							missing_required_env_variable_keys_for_proj_type+=("$key")
+						fi
+					done
+				;;
+			esac
+		fi
+
+		if [[ "$project_has_urls" = 'true' ]]; then
+			if [[ "$(echo "$config_project_env_variables" | jq -r 'has("url")')" = 'true' ]]; then
+				for url_name in "${cfg_required_urls[@]}"; do
+					if [[ ! "$(echo "$config_project_content" | jq -r ".urls | has(\"$url_name\")")" = 'true' ]]; then
+						url_keys_missing='true'
+						missing_urls_keys+=("$url_name")
+					fi
+				done
+			else
+				url_keys_missing='true'
+			fi
+		fi
+
+		if [[ "$missing_required_keys" = 'true' \
+				|| "$required_keys_missing_for_proj_type" = 'true' \
+				|| "$required_env_variable_keys_missing" = 'true' \
+				|| "$required_env_variable_keys_missing_for_proj_type" = 'true' \
+				|| "$project_type_invalid" = 'true' \
+				|| "$url_keys_missing" = 'true' \
+		]]; then
+			validation_failed='true'
+		fi
+
+		if [[ "$missing_required_keys" = 'true' || "$required_keys_missing_for_proj_type" = 'true' ]]; then
+			print_format "$style_error" \
+				"Project $i '$project_name' is missing the following keys: ${missing_required_keys[*]} ${missing_required_keys_for_proj_type[*]}"
+		fi
+
+		if [[ "$required_env_variable_keys_missing" = 'true' || "$required_env_variable_keys_missing_for_proj_type" = 'true' ]]; then
+			print_format "$style_error" \
+				"Project $i '$project_name' is missing the following environment variables: ${missing_required_keys[*]} ${missing_required_env_variable_keys[*]}"
+		fi
+
+		if [[ "$url_keys_missing" = 'true' ]]; then
+			print_format "$style_error" "Project $i '$project_name' is missing the following urls: ${missing_urls_keys[*]}"
+		fi
+	done
+
+	if [[ "$" = 'true' ]]; then
+		return 1
+	fi
+
+	return 0
 }
 
 
