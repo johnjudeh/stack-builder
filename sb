@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 
-######## Constants ########
+######## CONSTANTS ########
 
-readonly script_name='om'
+readonly script_name='sb'
 readonly version='1.0.0'
+readonly config_filename=".${script_name}config.json"
+readonly config_filepath=~/$config_filename
 
 readonly fm_red="$(tput setaf 1)"
 readonly fm_green="$(tput setaf 2)"
@@ -17,111 +19,11 @@ readonly fm_reset="$(tput sgr0)"
 readonly style_command_title='cmd'
 readonly style_error='err'
 
-readonly env_var_venv_root='VENV_ROOT'
-readonly env_var_ba_root='BA_ROOT'
-readonly env_var_ba_node='BA_NODE_ROOT'
-readonly env_var_kodiak_root='KOD_ROOT'
-readonly env_var_om_root='OM_ROOT'
-readonly env_var_ba_venv='BA_VENV'
-readonly env_var_kodiak_venv='KOD_VENV'
-readonly env_var_ba_nenv='BA_NENV'
-readonly env_var_om_nenv='OM_NENV'
-readonly env_var_ba_db='BA_DB'
-readonly env_var_kodiak_db='KOD_DB'
-readonly env_var_ba_celery_app='BA_CELERY_APP'
-readonly env_vars_required=( \
-	"$env_var_venv_root" "$env_var_ba_root" "$env_var_ba_node" "$env_var_kodiak_root" "$env_var_om_root" "$env_var_ba_venv" \
-	"$env_var_kodiak_venv" "$env_var_ba_nenv" "$env_var_om_nenv" "$env_var_ba_db" "$env_var_kodiak_db" "$env_var_ba_celery_app" \
-)
-
-declare -ri proj_i_ba=0
-declare -ri proj_i_ba_node=1
-declare -ri proj_i_om=2
-declare -ri proj_i_kod=3
-
-readonly project_ba='bankangle'
-readonly project_ba_short='ba'
-readonly project_ba_node='bankangle-node'
-readonly project_ba_node_short='ba-node'
-readonly project_om='om-elements'
-readonly project_om_short='om'
-readonly project_kod='kodiak'
-readonly project_kod_short='kod'
-readonly projects=( \
-	"$project_ba" "$project_ba_short" \
-	"$project_ba_node" "$project_ba_node_short" \
-	"$project_om" "$project_om_short" \
-	"$project_kod" "$project_kod_short" \
-)
-
-readonly -a project_names=(
-	[$proj_i_ba]="$project_ba"
-	[$proj_i_ba_node]="$project_ba_node"
-	[$proj_i_om]="$project_om"
-	[$proj_i_kod]="$project_kod"
-)
-readonly -a project_short_names=(
-	[$proj_i_ba]="$project_ba_short"
-	[$proj_i_ba_node]="$project_ba_node_short"
-	[$proj_i_om]="$project_om_short"
-	[$proj_i_kod]="$project_kod_short"
-)
-readonly -a project_dirs=(
-	[$proj_i_ba]="$BA_ROOT"
-	[$proj_i_ba_node]="$BA_NODE_ROOT"
-	[$proj_i_om]="$OM_ROOT"
-	[$proj_i_kod]="$KOD_ROOT"
-)
-
-readonly -a tracked_projects=("$proj_i_ba")
-readonly -a project_tracked_by=(
-	[$proj_i_ba]="$proj_i_ba_node"
-)
-
 readonly virtual_env_type_py='py'
 readonly virtual_env_type_node='node'
-readonly -a project_virtual_env_types=(
-	[$proj_i_ba]="$virtual_env_type_py"
-	[$proj_i_ba_node]="$virtual_env_type_node"
-	[$proj_i_om]="$virtual_env_type_node"
-	[$proj_i_kod]="$virtual_env_type_py"
-)
-readonly -a project_virtual_env_names=(
-	[$proj_i_ba]="$BA_VENV"
-	[$proj_i_ba_node]="$BA_NENV"
-	[$proj_i_om]="$OM_NENV"
-	[$proj_i_kod]="$KOD_VENV"
-)
 
 readonly project_type_django='django'
 readonly project_type_node='node'
-readonly -a project_types=(
-	[$proj_i_ba]="$project_type_django"
-	[$proj_i_ba_node]="$project_type_node"
-	[$proj_i_om]="$project_type_node"
-	[$proj_i_kod]="$project_type_django"
-)
-
-readonly port_ba='8000'
-readonly port_kod='8002'
-readonly -a project_ports=(
-	[$proj_i_ba]="$port_ba"
-	[$proj_i_kod]="$port_kod"
-)
-
-readonly -a project_db_names=(
-	[$proj_i_ba]="$BA_DB"
-	[$proj_i_kod]="$KOD_DB"
-)
-
-readonly -a project_requires_load_termsheet_templates=(
-	[$proj_i_ba]='true'
-	[$proj_i_kod]='false'
-)
-
-readonly -a project_celery_app_names=(
-	[$proj_i_ba]="$BA_CELERY_APP"
-)
 
 readonly command_freeze='freeze'
 readonly command_restore='restore'
@@ -136,30 +38,22 @@ readonly option_version='--version'
 readonly option_check='--check'
 readonly option_verbose='--verbose'
 readonly option_verbose_short='-v'
-readonly allowed_options_base=( "$option_help" "$option_help_short" "$option_version" "$option_check" "$option_verbose" "$option_verbose_short")
+readonly allowed_options_base=(
+	"$option_help" "$option_help_short"
+	"$option_verbose" "$option_verbose_short"
+	"$option_version"
+	"$option_check"
+)
 
 readonly option_branch='--branch'
 readonly option_branch_short='-b'
 readonly option_delete='--delete'
 readonly option_delete_short='-d'
-readonly option_om='--om'
-readonly option_om_short='-o'
-readonly option_kod='--kod'
-readonly option_kod_short='-k'
 readonly freeze_command_allowed_options=( "$option_branch" "$option_branch_short" )
 readonly restore_command_allowed_options=( "$option_delete" "$option_delete_short" )
-readonly build_command_allowed_options=( "$option_om" "$option_om_short" "$option_kod" "$option_kod_short" )
 readonly run_command_allowed_options=( "$option_branch" "$option_branch_short" )
 
 readonly freeze_command_default_branch='master'
-readonly freeze_command_projects=( \
-	"$project_ba" "$project_ba_short" \
-	"$project_kod" "$project_kod_short" \
-)
-
-readonly build_command_project_tags=( \
-	"$project_ba_short" "$project_om_short" "$project_kod_short" \
-)
 
 readonly message_usage="usage: $script_name [$option_help|$option_help_short] [$option_version] [$option_verbose|$option_verbose_short] [$option_check] <command> [<args>]"
 readonly message_usage_help="$message_usage
@@ -184,6 +78,7 @@ There are a number of possible commands:
 
 			$script_name $command_run <project> [$option_branch|$option_branch_short <branch>] <command> [<args>]
 "
+readonly message_config_file_not_readable="The config file '$config_filepath' does not exist or is not readable"
 readonly message_check='Running environment check...'
 readonly message_verbose='Verbose mode switched on'
 readonly message_not_enough_args='Not enough arguments passed'
@@ -203,7 +98,6 @@ readonly tmux_win_name_django_suffix='_django'
 readonly tmux_win_name_celery_suffix='_celery'
 readonly tmux_win_name_npm_watch_suffix='_npm_w'
 readonly sesh_name_sep=';'
-readonly sesh_name_regex="^${script_name}(${sesh_name_sep}($project_ba_short)=([0-9A-z_/.-]+))?(${sesh_name_sep}($project_om_short)=([0-9A-z_/.-]+))?(${sesh_name_sep}($project_kod_short)=([0-9A-z_/.-]+))?$"
 
 readonly tmux_update_type_create='create'
 readonly tmux_update_type_delete='delete'
@@ -215,41 +109,31 @@ readonly file_pattern_node_requirements='*package.json*'
 readonly file_pattern_django_migrations='*migrations*'
 readonly file_pattern_ts_templates='*fixtures/termsheet_templates*'
 
-declare -ri env_var_url_i_om=0
-declare -ri env_var_url_i_kod=1
-readonly env_var_om_url='OM_URL'
-readonly env_var_kod_url='KOD_URL'
-readonly -a projects_with_url_env_var_indices=("$proj_i_om" "$proj_i_kod")
-declare -ria project_env_var_url_indices=(
-	[$proj_i_om]="$env_var_url_i_om"
-	[$proj_i_kod]="$env_var_url_i_kod"
-)
-declare env_var_url_names=(
-	[$env_var_url_i_om]="$env_var_om_url"
-	[$env_var_url_i_kod]="$env_var_kod_url"
-)
 
-readonly local_host='https://127.0.0.1'
+######## CONFIG VARIABLES  ########
 
-readonly url_kod_local="$local_host:$port_kod"
-readonly url_kod_master='https://kodiak.originmarkets-labs.com/'
-readonly url_kod_develop='https://kodiak.originmarkets-dev.com/'
-readonly url_kod_default="$url_kod_master"
-
-readonly url_om_local="file://$OM_ROOT/dist/om-app"
-readonly url_om_develop='https://dev.originmarkets-dev.com/angular/'
-readonly url_om_qa='https://qa.originmarkets-dev.com/angular/'
-readonly url_om_master='https://master.originmarkets-dev.com/angular/'
-readonly url_om_default="$url_om_develop"
-
-readonly -a project_env_var_url_local=(
-	[$proj_i_om]="$url_om_local"
-	[$proj_i_kod]="$url_kod_local"
-)
-readonly -a project_env_var_url_default=(
-	[$proj_i_om]="$url_om_default"
-	[$proj_i_kod]="$url_kod_default"
-)
+declare -a projects
+declare -a project_indices
+declare -a project_names
+declare -a project_short_names
+declare -a project_chars
+declare -a project_dirs
+declare -a project_virtual_env_types
+declare -a project_virtual_env_names
+declare -a project_ports
+declare -a project_requires_load_termsheet_templates
+declare -a project_celery_app_names
+declare -a project_db_names
+declare -a dependant_project_indices
+declare -a independant_project_indices
+declare -a projects_with_url_env_var_indices
+declare -a project_url_env_var_names
+declare -a project_url_local
+declare -a project_url_default
+declare -a tracked_projects
+declare -a git_independent_projects
+declare -a project_tracked_by
+declare -a env_vars_required
 
 
 ######## GLOBAL VARIABLES ########
@@ -257,25 +141,165 @@ readonly -a project_env_var_url_default=(
 verbose_mode='false'
 
 
+######## CONFIG MANAGEMENT ########
+
+function load_config() {
+	if [[ ! -r "$config_filepath" ]]; then
+		print_format "$style_error" "$message_config_file_not_readable"
+		return 1
+	fi
+
+	local config_json_content="$(<"$config_filepath")"
+	# validate_config "$config_json_content"
+
+	# Parse config file from memory
+	local config_projects_content="$(echo $config_json_content | jq ".projects")"
+	local num_of_projects="$(echo $config_projects_content | jq "length")"
+
+	# Load required config parameters for each project
+	for ((i=0; i<$num_of_projects; i++)); do
+		local config_project_content="$(echo $config_projects_content | jq ".[$i]")"
+		local project_name="$(echo $config_project_content | jq -r ".name")"
+		local project_short_name="$(echo $config_project_content | jq -r ".shortName")"
+		local project_cli_char="$(echo $config_project_content | jq -r ".cliChar")"
+		local project_type="$(echo $config_project_content | jq -r ".type")"
+		local project_is_dependant="$(echo $config_project_content | jq -r ".dependant")"
+		local project_track_project="$(echo $config_project_content | jq -r 'has("tracksProject")')"
+		local project_env_variables="$(echo $config_project_content | jq -r ".environmentVariables")"
+		local project_has_url="$(echo $project_env_variables | jq -r 'has("url")')"
+		local project_dir_env_var="$(echo $project_env_variables | jq -r ".rootDir")"
+		local project_env_name_env_var="$(echo $project_env_variables | jq -r ".envName")"
+		local project_dir="${!project_dir_env_var}"
+		local project_env_name="${!project_env_name_env_var}"
+
+		local project_index_varname="$(get_project_index_varname "${project_short_name}")"
+		local project_index_varname_long="$(get_project_index_varname "${project_name}")"
+		local project_index_varname_char="$(get_project_index_varname "${project_cli_char}")"
+
+		# Not ideal but seemingly the only way to declare a global variable in a function when the name
+		# of that variable is stored in another variable. Otherwise I can simply use name=value syntax
+		export ${project_index_varname}="$i"
+		export ${project_index_varname_long}="$i"
+		export ${project_index_varname_char}="$i"
+		local project_index="${!project_index_varname}"
+
+		projects+=("$project_name" "$project_short_name")
+		project_indices+=("$project_index")
+		project_names[$project_index]="$project_name"
+		project_short_names[$project_index]="$project_short_name"
+		project_chars[$project_index]="$project_cli_char"
+		project_types[$project_index]="$project_type"
+		project_dirs[$project_index]="$project_dir"
+		project_virtual_env_names[$project_index]="$project_env_name"
+
+		for evk in $(echo $config_project_content | jq -r ".environmentVariables | keys[]"); do
+			env_vars_required+=("$(echo $project_env_variables | jq -r ".$evk")")
+		done
+
+		if [[ "$project_is_dependant" = 'true' ]]; then
+			dependant_project_indices+=("${project_index}")
+		else
+			independant_project_indices+=("${project_index}")
+		fi
+
+		if [[ "$project_has_url" = 'true' ]]; then
+			# TODO: Implement arbitrary url names
+			local url_env_var_name="$(echo $project_env_variables | jq -r ".url")"
+			local url_local="$(echo $config_project_content | jq -r ".urls.local")"
+			local url_default="$(echo $config_project_content | jq -r ".urls.default")"
+
+			projects_with_url_env_var_indices+=("$project_index")
+			project_url_env_var_names["$project_index"]="$url_env_var_name"
+			project_url_local["$project_index"]="$url_local"
+			project_url_default["$project_index"]="$url_default"
+		fi
+
+		if [[ "$project_track_project" = 'true' ]]; then
+			local tracked_project="$(echo $config_project_content | jq -r ".tracksProject")"
+			local tracked_project_i="$(get_project_index "$tracked_project")"
+
+			tracked_projects+=("$tracked_project_i")
+			project_tracked_by["$tracked_project_i"]="$project_index"
+
+		else
+			git_independent_projects+=("$project_index")
+		fi
+
+		case "$project_type" in
+			"$project_type_django")
+				local project_port="$(echo $config_project_content | jq -r ".port")"
+				local has_celery_app="$(echo $config_project_content | jq -r 'has("celeryAppName")')"
+				local has_load_termsheet_templates="$(echo $config_project_content | jq -r 'has("loadTermsheetTemplates")')"
+				local project_db_name_env_var="$(echo $project_env_variables | jq -r ".dbName")"
+				local project_db_name="${!project_db_name_env_var}"
+
+				project_virtual_env_types[$project_index]="$virtual_env_type_py"
+				project_ports[$project_index]="$project_port"
+				project_db_names[$project_index]="$project_db_name"
+
+				if [[ "$has_celery_app" = 'true' ]]; then
+					local project_celery_app_name="$(echo $config_project_content | jq -r ".celeryAppName")"
+					project_celery_app_names[$project_index]="$project_celery_app_name"
+				fi
+
+				if [[ "$has_load_termsheet_templates" = 'true' ]]; then
+					project_requires_load_termsheet_templates[$project_index]='true'
+				else
+					project_requires_load_termsheet_templates[$project_index]='false'
+				fi
+				;;
+
+			"$project_type_node")
+				project_virtual_env_types[$project_index]="$virtual_env_type_node"
+				;;
+		esac
+	done
+
+	return 0
+}
+
+function validate_config() {
+	print_format "$style_error" "Not implemented"
+}
+
+function print_config() {
+	jq '.' "$config_filepath"
+}
+
+
 ######## MAPPING FUNCTIONS ########
+
+function get_project_index_varname() {
+	local project="$1"
+	printf "proj_i_$project"
+}
 
 function get_project_index() {
 	local project="$1"
+	local project_index_varname="$(get_project_index_varname "$project")"
 
-	case "$project" in
-		"$project_ba"|"$project_ba_short")
-			printf "$proj_i_ba"
-			;;
-		"$project_ba_node"|"$project_ba_node_short")
-			printf "$proj_i_ba_node"
-			;;
-		"$project_om"|"$project_om_short")
-			printf "$proj_i_om"
-			;;
-		"$project_kod"|"$project_kod_short")
-			printf "$proj_i_kod"
-			;;
-	esac
+	if [[ -z "${!project_index_varname}" ]]; then
+		return 1
+	fi
+
+	printf "${!project_index_varname}"
+	return 0
+}
+
+function get_project_from_option() {
+	local option="$1"
+
+	if [[ "$option" =~ ^--[a-z].+$ ]]; then
+		project_short_name="${option:2}"
+		printf "$project_short_name"
+
+	elif [[ "$option" =~ ^-[a-z]$ ]]; then
+		project_char="${option:1}"
+		printf "$project_char"
+
+	else
+		return 1
+	fi
 
 	return 0
 }
@@ -312,8 +336,10 @@ function is_valid_project() {
 }
 
 function is_valid_project_for_freeze_command() {
-	local search="$1"
-	is_in_array "$search" "${freeze_command_projects[@]}"
+	local project="$1"
+	local -i project_i
+	project_i=$(get_project_index "$project") || return 1
+	is_in_array "$project_i" "${!project_db_names[@]}"
 }
 
 function is_valid_project_tag_for_build_command() {
@@ -336,9 +362,20 @@ function is_valid_restore_command_option() {
 	is_in_array "$search" "${restore_command_allowed_options[@]}"
 }
 
+function is_valid_build_command_project() {
+	local project="$1"
+	local -i project_i
+
+	project_i=$(get_project_index "$project") || return 1
+
+	is_in_array "$project_i" "${git_independent_projects[@]}" \
+	  && is_in_array "$project_i" "${project_indices[@]}"
+}
+
 function is_valid_build_command_option() {
-	local search="$1"
-	is_in_array "$search" "${build_command_allowed_options[@]}"
+	local option="$1"
+	local project="$(get_project_from_option "$option")"
+	is_valid_build_command_project "$project"
 }
 
 function print_format() {
@@ -417,11 +454,11 @@ function has_file_changes_between_branches_based_on_pattern() {
 
 	if [[ -z "$git_output" ]]; then
 		printf "false"
-		return 1
 	else
 		printf "true"
-		return 0
 	fi
+
+	return 0
 }
 
 function run_command() {
@@ -429,7 +466,6 @@ function run_command() {
 	$@
 }
 
-# TODO: Should this happen on a project rather than a specific db?
 function create_clean_db() {
 	local db_name="$1"
 	local clean_db_name="${db_name}_${clean_db_suffix}"
@@ -458,7 +494,6 @@ function create_clean_db() {
 	return 0
 }
 
-# TODO: Should this happen on a project rather than a specific db?
 function restore_from_clean_db() {
 	local db_name="$1"
 	local delete_clean_db="$2"
@@ -507,12 +542,12 @@ function restore_from_clean_db() {
 
 function django_migrate_db() {
 	print_format "$style_command_title" 'Django migrate database'
-	python manage.py migrate
+	python manage.py migrate || return 1
 }
 
 function load_termsheet_templates() {
 	print_format "$style_command_title" 'Loading termsheet templates'
-	python manage.py load_termsheet_templates --noinput
+	python manage.py load_termsheet_templates --noinput || return 1
 }
 
 function django_start_server() {
@@ -564,9 +599,6 @@ function setup_project_branch() {
 	local project="$1"
 	local run_install="$2"
 	local branch="$3"
-	# TODO: Potentially rethink these args as they are django-specific parameters
-	local run_migrations="$4"
-	local load_ts_templates="$5"
 
 	local -i project_i=$(get_project_index "$project")
 	local project_type="${project_types[$project_i]}"
@@ -574,6 +606,9 @@ function setup_project_branch() {
 	goto_project "$project" "$run_install" "$branch" || return 1
 
 	if [[ "$project_type" = "$project_type_django" ]]; then
+		# These arguments are only required for django projects
+		local run_migrations="$4"
+		local load_ts_templates="$5"
 		local project_requires_load_ts_templates="${project_requires_load_termsheet_templates[$project_i]}"
 
 		if [[ "$run_migrations" = 'true' ]]; then
@@ -591,7 +626,6 @@ function setup_project_branch() {
 function run_django_start_server() {
 	local project="$1"
 	local port="$2"
-
 	goto_project "$project" 'false' || return 1
 	django_start_server "$port"
 }
@@ -600,18 +634,32 @@ function run_django_start_celery() {
 	local project="$1"
 	local app_name="$2"
 	local priority="$3"
-
 	goto_project "$project" 'false' || return 1
 	django_start_celery "$app_name" "$priority"
 }
 
 function run_npm_run_watch() {
 	local project="$1"
-
 	goto_project "$project" 'false' || return 1
 	npm_run_watch
 }
 
+
+######## TMUX SESSION MANAGEMENT ########
+
+function get_tmux_session_name_regex() {
+	local session_name_regex="^${script_name}"
+
+	# Dynamically builds regex pattern based on projects in config
+	for proj_i in "${git_independent_projects[@]}"; do
+		local project_short_name="${project_short_names[$proj_i]}"
+		session_name_regex+="(${sesh_name_sep}($project_short_name)=([0-9A-z_/.-]+))?"
+	done
+
+	session_name_regex+='$'
+
+	printf "$session_name_regex"
+}
 
 function run_command_with_tmux_unlock() {
 	local tmux_lock_channel="$1"
@@ -651,7 +699,6 @@ function create_tmux_worker_window() {
 	local tmux_session_name="$1"
 	local tmux_windows=( $(tmux list-windows -t "$tmux_session_name" -F "#{window_name}") )
 
-	# Creates the windows necessary for the project
 	if ! is_in_array "$tmux_window_name_worker" "${tmux_windows[@]}"; then
 		tmux new-window -dk -t "$tmux_session_name:0" -n "$tmux_window_name_worker" || return 1
 	fi
@@ -663,9 +710,8 @@ function delete_tmux_worker_window() {
 	local tmux_session_name="$1"
 	local tmux_windows=( $(tmux list-windows -t "$tmux_session_name" -F "#{window_name}") )
 
-	# Creates the windows necessary for the project
 	if is_in_array "$tmux_window_name_worker" "${tmux_windows[@]}"; then
-		tmux kill-window -t "$tmux_session_name:$tmux_window_name_worker"
+		tmux kill-window -t "$tmux_session_name:$tmux_window_name_worker" || return 1
 	fi
 
 	return 0
@@ -682,7 +728,7 @@ function update_tmux_windows_for_project() {
 	local tmux_windows=( $(tmux list-windows -t "$tmux_session_name" -F "#{window_name}") )
 
 	if [[ "$update_type" = "$tmux_update_type_set_env_var" && ( -z "$4" || -z "$5" ) ]]; then
-		printf "$style_error" "Environment variables cannot be added as they are not set"
+		print_format "$style_error" "Environment variables cannot be added as they are not set"
 		return 1
 	else
 		local env_var_key="$4"
@@ -942,7 +988,7 @@ function refresh_tmux_windows_for_project() {
 
 function handle_base_options() {
 	local option="$1"
-	local command="$2"
+	local next_arg="$2"
 
 	case "$option" in
 		"$option_help" | "$option_help_short")
@@ -951,8 +997,8 @@ function handle_base_options() {
 		"$option_verbose" | "$option_verbose_short")
 			printf "$message_verbose\n"
 			verbose_mode='true'
-			if [[ -z "$command" ]]; then
-				printf "$message_not_enough_args\n\n"
+			if [[ -z "$next_arg" ]]; then
+				print_format "$style_error" "$message_not_enough_args\n"
 				printf "$message_usage_help\n"
 				return 1
 			fi
@@ -961,6 +1007,7 @@ function handle_base_options() {
 			printf "$version\n"
 			;;
 		"$option_check")
+			load_config
 			check_env 'true' || return 1
 			;;
 	esac
@@ -974,7 +1021,7 @@ function check_env() {
 	local verbose='false'
 	local vars_missing='false'
 
-	if [[ "$verbose_mode" = 'true' ]] || ( [[ $# -ge 1 ]] && [[ "$set_verbose" = 'true' ]] ); then
+	if [[ "$verbose_mode" = 'true' || "$set_verbose" = 'true' ]]; then
 		local verbose='true'
 		print_format "$style_command_title" "$message_check"
 	fi
@@ -1001,7 +1048,6 @@ function check_env() {
 	return 0
 }
 
-# TODO: Make sure this works with OM_URL and KOD_URL
 function freeze() {
 	local project="$1"
 	local -i project_i=$(get_project_index "$project")
@@ -1132,48 +1178,42 @@ function run() {
 }
 
 function build() {
-	local -ia tmux_sesh_name_project_indices=("$proj_i_ba" "$proj_i_om" "$proj_i_kod")
-	local -ia dependant_project_indices=("$proj_i_ba")
-	local -ia independant_project_indices=("$proj_i_ba_node" "$proj_i_om" "$proj_i_kod")
-
 	local -a project_branches_from
 	local -a project_branches_to
-
-	project_branches_to[$proj_i_ba]="$1"
-	project_branches_to[$proj_i_ba_node]="$1"
+	local -a env_vars_to_set
 
 	if [[ $# -eq 0 ]]; then
 		print_format "$style_error" "$message_not_enough_args"
 		return 1
 
-	elif [[ $# -ge 2 ]]; then
-		shift
+	else
 		for (( i=1; i<=$#; i+=2 )); do
 			local option="${!i}"
 			local branch_index=$((i + 1))
 			local branch="${!branch_index}"
 
 			if is_valid_build_command_option "$option"; then
-				case "$option" in
-					"$option_om"|"$option_om_short")
-						if [[ $# -lt $branch_index ]]; then
-							print_format "$style_error" "$message_incorrect_num_of_args"
-							return 1
-						else
-							project_branches_to[$proj_i_om]="$branch"
-						fi
-						;;
-					"$option_kod"|"$option_kod_short")
-						if [[ $# -lt $branch_index ]]; then
-							print_format "$style_error" "$message_incorrect_num_of_args"
-							return 1
-						else
-							project_branches_to[$proj_i_kod]="$branch"
-						fi
-						;;
-				esac
+				local project
+				local -i project_i
+				project="$(get_project_from_option "$option")" || return 1
+				project_i=$(get_project_index "$project") || return 1
+
+				if [[ $# -lt $branch_index ]]; then
+					print_format "$style_error" "$message_incorrect_num_of_args"
+					return 1
+
+				else
+					project_branches_to[$project_i]="$branch"
+
+					# This is for projects in the same git repository as another project and therefore track its branch
+					if is_in_array "$project_i" "${tracked_projects[@]}"; then
+						local tracking_project_i="${project_tracked_by[$project_i]}"
+						project_branches_to[$tracking_project_i]="${project_branches_to[$project_i]}"
+					fi
+				fi
+
 			else
-				print_format "$style_rror" "$message_unknown_arg: $option"
+				print_format "$style_error" "$message_unknown_arg: $option"
 				printf "$message_usage\n"
 				return 1
 			fi
@@ -1185,16 +1225,17 @@ function build() {
 	tmux start-server || return 1
 
 	local -a tmux_session_rematch
-	tmux_session_rematch=( $(get_running_tmux_session_with_regex "$sesh_name_regex") )
-	local tmux_session_rematch_ret=$?
+	local tmux_session_name_regex="$(get_tmux_session_name_regex)"
+	tmux_session_rematch=( $(get_running_tmux_session_with_regex "$tmux_session_name_regex") )
+	local -i tmux_session_rematch_ret=$?
 	local tmux_sesh_name_new="${script_name}"
 
-	for proj_i in "${tmux_sesh_name_project_indices[@]}"; do
+	for proj_i in "${git_independent_projects[@]}"; do
 		local branch_to="${project_branches_to[$proj_i]}"
 
 		if [[ -n "$branch_to" ]]; then
-			local short_name="${project_short_names[$proj_i]}"
-			tmux_sesh_name_new+="${sesh_name_sep}${short_name}=${branch_to}"
+			local project_short_name="${project_short_names[$proj_i]}"
+			tmux_sesh_name_new+="${sesh_name_sep}${project_short_name}=${branch_to}"
 		fi
 	done
 
@@ -1214,7 +1255,7 @@ function build() {
 			local match="${tmux_session_rematch[$i]}"
 			local -i after_match_index=$((i + 1))
 
-			if is_valid_project_tag_for_build_command "$match"; then
+			if is_valid_build_command_project "$match"; then
 				local project="$match"
 				local -i project_i=$(get_project_index "$project")
 				project_branches_from[$project_i]="${tmux_session_rematch[$after_match_index]}"
@@ -1231,8 +1272,6 @@ function build() {
 	fi
 
 	create_tmux_worker_window "$tmux_sesh_name_new" || return 1
-
-	local -a env_vars_to_set
 
 	# Load independent projects first and capture env variables needed for dependent projects
 	for proj_i in "${independant_project_indices[@]}"; do
@@ -1253,28 +1292,24 @@ function build() {
 			refresh_tmux_windows_for_project "$tmux_sesh_name_new" "$proj_short_name" "$branch_from" "$branch_to" 'false' || return 1
 
 			if is_in_array "$proj_i" "${projects_with_url_env_var_indices[@]}"; then
-				local env_var_url_i="${project_env_var_url_indices[$proj_i]}"
-				local env_var_url="${project_env_var_url_local[$proj_i]}"
-				env_vars_to_set["$env_var_url_i"]="$env_var_url"
+				local env_var_url="${project_url_local[$proj_i]}"
+				env_vars_to_set["$proj_i"]="$env_var_url"
 			fi
 
 		else
 			delete_tmux_windows_for_project "$tmux_sesh_name_new" "$proj_short_name" || return 1
 
 			if is_in_array "$proj_i" "${projects_with_url_env_var_indices[@]}"; then
-				local env_var_url_i="${project_env_var_url_indices[$proj_i]}"
-				local env_var_url="${project_env_var_url_default[$proj_i]}"
-				env_vars_to_set["$env_var_url_i"]="$env_var_url"
+				local env_var_url="${project_url_default[$proj_i]}"
+				env_vars_to_set["$proj_i"]="$env_var_url"
 			fi
 		fi
-
-		printf "env_var_url_i = $env_var_url_i\n"
 	done
 
 	printf "\n"
-	for evi in "${!env_vars_to_set[@]}"; do
-		local evn="${env_var_url_names[$evi]}"
-		local evv="${env_vars_to_set[$evi]}"
+	for proj_i in "${!env_vars_to_set[@]}"; do
+		local evn="${project_url_env_var_names[$proj_i]}"
+		local evv="${env_vars_to_set[$proj_i]}"
 		printf "%s\n" "$evn = $evv"
 	done
 
@@ -1296,9 +1331,10 @@ function build() {
 
 			# Stop tmux window process and add the necessary environment variables to them
 			stop_tmux_windows_for_project "$tmux_sesh_name_new" "$proj_short_name" || return 1
-			for env_var_i in "${!env_vars_to_set[@]}"; do
-				local env_var_key="${env_var_url_names[$env_var_i]}"
-				local env_var_value="${env_vars_to_set[$env_var_i]}"
+
+			for env_var_proj_i in "${!env_vars_to_set[@]}"; do
+				local env_var_key="${project_url_env_var_names[$env_var_proj_i]}"
+				local env_var_value="${env_vars_to_set[$env_var_proj_i]}"
 				printf "Setting env variable $env_var_key=$env_var_value\n"
 				load_env_var_in_tmux_windows_for_project "$tmux_sesh_name_new" "$proj_short_name" \
 					"$env_var_key" "$env_var_value" || return 1
@@ -1309,8 +1345,6 @@ function build() {
 		else
 			delete_tmux_windows_for_project "$tmux_sesh_name_new" "$proj_short_name" || return 1
 		fi
-
-		env_vars_to_set["$env_var_url_i"]="$env_var_url"
 	done
 
 	delete_tmux_worker_window "$tmux_sesh_name_new" || return 1
@@ -1344,6 +1378,8 @@ function handle_command() {
 		"$command_scipt_run")
 			script_run "$@" || return 1
 			;;
+		# TODO: Add config specific commands
+		# TODO: Add reset command for issues
 	esac
 
 	return 0
@@ -1361,17 +1397,17 @@ if [[ $# -eq 0 ]]; then
 else
 	for arg in "$@"; do
 		if is_valid_base_option "$arg"; then
-			# Command line option passed. Ignores all arguments after
 			handle_base_options "$@" || exit 1
 			shift
 
 		elif is_valid_command "$arg"; then
+			load_config || exit 1
 			check_env || exit 1
 			handle_command "$@" || exit 1
 			exit 0
 
 		else
-			printf "Unknown argument: $1\n"
+			printf "$message_unknown_arg: $arg\n"
 			printf "$message_usage\n"
 			exit 1
 		fi
