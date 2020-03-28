@@ -29,8 +29,18 @@ readonly command_freeze='freeze'
 readonly command_restore='restore'
 readonly command_build='build'
 readonly command_run='run'
+readonly command_print_config='print-config'
+readonly command_reset='reset'
 readonly command_scipt_run='script-run'
-readonly commands=( "$command_freeze" "$command_restore" "$command_build" "$command_run" "$command_scipt_run" )
+readonly commands=(
+	"$command_freeze"
+	"$command_restore"
+	"$command_build"
+	"$command_run"
+	"$command_scipt_run"
+	"$command_print_config"
+	"$command_reset"
+)
 
 readonly option_help='--help'
 readonly option_help_short='-h'
@@ -39,8 +49,10 @@ readonly option_check='--check'
 readonly option_verbose='--verbose'
 readonly option_verbose_short='-v'
 readonly allowed_options_base=(
-	"$option_help" "$option_help_short"
-	"$option_verbose" "$option_verbose_short"
+	"$option_help"
+	"$option_help_short"
+	"$option_verbose"
+	"$option_verbose_short"
 	"$option_version"
 	"$option_check"
 )
@@ -60,23 +72,25 @@ readonly message_usage_help="$message_usage
 
 There are a number of possible commands:
 
-	$command_freeze		Freeze database for project. Uses the master branch by default
+	${fm_yellow}$command_freeze		${fm_cyan}$script_name $command_freeze <project> [$option_branch|$option_branch_short <branch>]${fm_reset}
+			Freeze database for project. Uses the master branch by default
 
-			$script_name $command_freeze <project> [$option_branch|$option_branch_short <branch>]
-
-	$command_restore		Restores project database to last time the freeze command was run. Optionally
+	${fm_yellow}$command_restore		${fm_cyan}$script_name $command_restore <project> [$option_delete|$option_delete_short]${fm_reset}
+			Restores project database to last time the freeze command was run. Optionally
 			removes clean database after successful restore
 
-			$script_name $command_restore <project> [$option_delete|$option_delete_short]
+	${fm_yellow}$command_build		${fm_cyan}$script_name $command_build [--<project_short_name>|-<proj_cli_char> <project-branch>...]${fm_reset}
+			Builds each specified project and its dependant services with the specified
+			branches. Possible projects depend on your config file
 
-	$command_build		Builds each specified project and its dependant services with the specified
-			branches
+	${fm_yellow}$command_run		${fm_cyan}$script_name $command_run <project> [$option_branch|$option_branch_short <branch>] <command> [<args>]${fm_reset}
+			Loads project environment and runs required command in it
 
-			$script_name $command_build <ba-branch> [$option_om|$option_om_short <om-branch>] [$option_kod|$option_kod_short <kodiaik-branch>]
+	${fm_yellow}$command_reset		${fm_cyan}$script_name $command_reset${fm_reset}
+			Removes tmux sessions and unlocks waiting windows
 
-	$command_run		Loads project environment and runs required command in it
-
-			$script_name $command_run <project> [$option_branch|$option_branch_short <branch>] <command> [<args>]
+	${fm_yellow}$command_print_config	${fm_cyan}$script_name $command_print_config${fm_reset}
+			Prints out the config file found at $config_filepath. All commands depend on this project
 "
 readonly message_config_file_not_readable="The config file '$config_filepath' does not exist or is not readable"
 readonly message_check='Running environment check...'
@@ -260,10 +274,6 @@ function load_config() {
 
 function validate_config() {
 	print_format "$style_error" "Not implemented"
-}
-
-function print_config() {
-	jq '.' "$config_filepath"
 }
 
 
@@ -1352,6 +1362,23 @@ function build() {
 	return 0
 }
 
+function print_config() {
+	jq '.' "$config_filepath"
+}
+
+function reset() {
+	local tmux_sessions=( $(tmux list-sessions -F "#{session_name}") )
+	local tmux_session_name_regex="$(get_tmux_session_name_regex)"
+
+	for session in "${tmux_sessions[@]}"; do
+		if [[ "$session" =~ $tmux_session_name_regex ]]; then
+			tmux kill-session -t "$session"
+		fi
+	done
+
+	tmux wait-for -S "$tmux_default_lock_channel"
+}
+
 function script_run() {
 	$@ || print_format "$style_error" "$message_function_returned_error"
 	return 0
@@ -1375,11 +1402,15 @@ function handle_command() {
 		"$command_run")
 			run "$@" || return 1
 			;;
+		"$command_print_config")
+			print_config "$@" || return 1
+			;;
+		"$command_reset")
+			reset "$@" || return 1
+			;;
 		"$command_scipt_run")
 			script_run "$@" || return 1
 			;;
-		# TODO: Add config specific commands
-		# TODO: Add reset command for issues
 	esac
 
 	return 0
