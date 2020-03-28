@@ -1387,6 +1387,9 @@ function script_run() {
 function handle_command() {
 	local command="$1"
 
+	load_config || return 1
+	check_env || return 1
+
 	shift
 
 	case "$command" in
@@ -1419,29 +1422,31 @@ function handle_command() {
 
 ######## MAIN SCRIPT ########
 
-if [[ $# -eq 0 ]]; then
-	# Not enough arguments passed
-	printf "$message_not_enough_args\n\n"
-	printf "$message_usage_help\n"
-	exit 1
+function main() {
+	if [[ $# -eq 0 ]]; then
+		# Not enough arguments passed
+		printf "$message_not_enough_args\n\n"
+		printf "$message_usage_help\n"
+		return 1
 
-else
-	for arg in "$@"; do
-		if is_valid_base_option "$arg"; then
-			handle_base_options "$@" || exit 1
-			shift
+	else
+		for arg in "$@"; do
+			if is_valid_base_option "$arg"; then
+				handle_base_options "$@" || return 1
+				shift
 
-		elif is_valid_command "$arg"; then
-			load_config || exit 1
-			check_env || exit 1
-			handle_command "$@" || exit 1
-			exit 0
+			elif is_valid_command "$arg"; then
+				time handle_command "$@" || return 1
+				return 0
 
-		else
-			printf "$message_unknown_arg: $arg\n"
-			printf "$message_usage\n"
-			exit 1
-		fi
-	done
-fi
+			else
+				printf "$message_unknown_arg: $arg\n"
+				printf "$message_usage\n"
+				return 1
+			fi
+		done
+	fi
+}
+
+main "$@" || exit 1
 
