@@ -128,39 +128,63 @@ readonly file_pattern_node_requirements='*package.json*'
 readonly file_pattern_django_migrations='*migrations*'
 readonly file_pattern_ts_templates='*fixtures/termsheet_templates*'
 
-readonly cfg_required_key_name='name'
-readonly cfg_required_key_short_name='shortName'
-readonly cfg_required_key_cli_char='cliChar'
-readonly cfg_required_key_type='type'
-readonly cfg_required_key_dependant='dependant'
-readonly cfg_required_key_env_variables='environmentVariables'
+readonly name_regex="[A-z][A-z0-9_]+"
+readonly char_regex="[a-z0-9]"
+
+readonly valid_project_option_long="^--$name_regex$"
+readonly valid_project_option_char="^-$char_regex$"
+
+readonly cfg_valid_name_regex="^$name_regex$"
+readonly cfg_valid_char_regex="^$char_regex$"
+
+readonly cfg_key_projects='projects'
+
+readonly cfg_key_name='name'
+readonly cfg_key_short_name='shortName'
+readonly cfg_key_cli_char='cliChar'
+readonly cfg_key_type='type'
+readonly cfg_key_dependant='dependant'
+readonly cfg_key_port='port'
+readonly cfg_key_celery_app_name='celeryAppName'
+readonly cfg_key_load_ts_templates='loadTermsheetTemplates'
+readonly cfg_key_tracks_project='tracksProject'
+readonly cfg_key_urls='urls'
+readonly cfg_key_env_variables='environmentVariables'
+
+readonly cfg_env_variable_key_root_dir='rootDir'
+readonly cfg_env_variable_key_env_name='envName'
+readonly cfg_env_variable_key_db_name='dbName'
+readonly cfg_env_variable_key_url='url'
+
+readonly cfg_urls_key_default='default'
+readonly cfg_urls_key_local='local'
+
 readonly -a cfg_project_required_fields=(
-	"$cfg_required_key_name"
-	"$cfg_required_key_short_name"
-	"$cfg_required_key_cli_char"
-	"$cfg_required_key_type"
-	"$cfg_required_key_dependant"
-	"$cfg_required_key_env_variables"
+	"$cfg_key_name"
+	"$cfg_key_short_name"
+	"$cfg_key_cli_char"
+	"$cfg_key_type"
+	"$cfg_key_dependant"
+	"$cfg_key_env_variables"
 )
-
-readonly cfg_required_env_variable_key_root_dir='rootDir'
-readonly cfg_required_env_variable_key_env_name='envName'
 readonly -a cfg_project_required_env_variable_fields=(
-	"$cfg_required_env_variable_key_root_dir"
-	"$cfg_required_env_variable_key_env_name"
+	"$cfg_env_variable_key_root_dir"
+	"$cfg_env_variable_key_env_name"
+)
+readonly -a cfg_allowed_project_types=(
+	"$project_type_django"
+	"$project_type_node"
+)
+readonly -a cfg_django_required_fields=("$cfg_key_port")
+readonly -a cfg_django_required_env_variable_fields=("$cfg_env_variable_key_db_name")
+readonly -a cfg_required_urls=(
+	"$cfg_urls_key_default"
+	"$cfg_urls_key_local"
 )
 
-readonly -a cfg_allowed_project_types=("$project_type_django" "$project_type_node")
-
-readonly cfg_django_required_key_port='port'
-readonly -a cfg_django_required_fields=("$cfg_django_required_key_port")
-
-readonly cfg_django_required_env_variable_key_db_name='dbName'
-readonly -a cfg_django_required_env_variable_fields=("$cfg_django_required_env_variable_key_db_name")
-
-readonly cfg_required_url_default='default'
-readonly cfg_required_url_local='local'
-readonly -a cfg_required_urls=("$cfg_required_url_default" "$cfg_required_url_local")
+readonly jq_filter_projects_it=".$cfg_key_projects[]"
+readonly jq_filter_project_env_variables="$jq_filter_projects_it.$cfg_key_env_variables"
+readonly jq_filter_project_urls="$jq_filter_projects_it.$cfg_key_urls"
 
 
 ######## CONFIG VARIABLES  ########
@@ -184,7 +208,8 @@ declare -a project_url_env_var_names
 declare -a project_url_local
 declare -a project_url_default
 declare -a tracked_projects
-declare -a git_independent_projects
+declare -a git_independant_project_indices
+declare -a git_dependant_project_indices
 declare -a project_tracked_by
 declare -a env_vars_required
 
@@ -196,7 +221,29 @@ verbose_mode='false'
 
 ######## CONFIG MANAGEMENT ########
 
+function expand_env_variable_values() {
+	local -a env_vars=("$@")
+
+	for env_var in "${env_vars[@]}"; do
+		if [[ -z "${!env_var+x}" ]]; then
+			printf "$env_var\n"
+		else
+			printf "${!env_var}\n"
+		fi
+	done
+
+	return 0
+}
+
 function load_config() {
+	local jq_filter_virtual_env_types="if .$cfg_key_type == \"$project_type_django\" then \"$virtual_env_type_py\" else .$cfg_key_type end"
+	local jq_filter_dependent_project_indicies="to_entries[] | if .value.$cfg_key_dependant == true then .key else empty end"
+	local jq_filter_independent_project_indicies="to_entries[] | if .value.$cfg_key_dependant == false then .key else empty end"
+	local jq_filter_git_independent_project_indicies="to_entries[] | if .value.$cfg_key_tracks_project then .key else empty end"
+	local jq_filter_git_dependent_project_indicies="to_entries[] | if .value.$cfg_key_tracks_project then empty else .key end"
+	local jq_filter_projects_with_urls_indicies="to_entries[] | if .value.$cfg_key_urls then .key else empty end"
+	local jq_filter_project_required_load_ts_templates=".$cfg_key_load_ts_templates//false"
+
 	if [[ ! -r "$config_filepath" ]]; then
 		print_format "$style_error" "$message_config_file_not_readable"
 		return 1
@@ -205,214 +252,194 @@ function load_config() {
 	local config_json_content="$(<"$config_filepath")"
 	validate_config "$config_json_content" || return 1
 
-	# Parse config file from memory
-	local num_of_projects="$(echo $config_json_content | jq ".projects | length")"
+	# Get static config parameters
+	projects=( $(echo "$config_json_content" | jq -r "$jq_filter_projects_it | .$cfg_key_name, .$cfg_key_short_name") )
+	project_indices=( $(echo "$config_json_content" | jq -r ".$cfg_key_projects | keys[]") )
+	project_names=( $(echo "$config_json_content" | jq -r "$jq_filter_projects_it.$cfg_key_name") )
+	project_short_names=( $(echo "$config_json_content" | jq -r "$jq_filter_projects_it.$cfg_key_short_name") )
+	project_chars=( $(echo "$config_json_content" | jq -r "$jq_filter_projects_it.$cfg_key_cli_char") )
+	project_types=( $(echo "$config_json_content" | jq -r "$jq_filter_projects_it.$cfg_key_type") )
+	project_virtual_env_types=( $(echo "$config_json_content" | jq -r "$jq_filter_projects_it | $jq_filter_virtual_env_types") )
+	dependant_project_indices=( $(echo "$config_json_content" | jq -r ".$cfg_key_projects | $jq_filter_dependent_project_indicies") )
+	independant_project_indices=( $(echo "$config_json_content" | jq -r ".$cfg_key_projects | $jq_filter_independent_project_indicies") )
+	env_vars_required=( $(echo "$config_json_content" | jq -r "$jq_filter_project_env_variables[]") )
+	git_independant_project_indices=( $(echo "$config_json_content" | jq -r ".$cfg_key_projects | $jq_filter_git_independent_project_indicies") )
+	git_dependant_project_indices=( $(echo "$config_json_content" | jq -r ".$cfg_key_projects | $jq_filter_git_dependent_project_indicies") )
+	projects_with_url_env_var_indices=( $(echo "$config_json_content" | jq -r ".$cfg_key_projects | $jq_filter_projects_with_urls_indicies") )
+	project_url_env_var_names=( $(echo "$config_json_content" | jq -r "$jq_filter_project_env_variables.$cfg_env_variable_key_url") )
+	# TODO: Implement arbitrary url names
+	project_url_local=( $(echo "$config_json_content" | jq -r "$jq_filter_project_urls.$cfg_urls_key_local") )
+	project_url_default=( $(echo "$config_json_content" | jq -r "$jq_filter_project_urls.$cfg_urls_key_default") )
+	project_ports=( $(echo "$config_json_content" | jq -r "$jq_filter_projects_it.$cfg_key_port") )
+	project_celery_app_names=( $(echo "$config_json_content" | jq -r "$jq_filter_projects_it.$cfg_key_celery_app_name") )
+	project_requires_load_termsheet_templates=(
+		$(echo "$config_json_content" | jq -r "$jq_filter_projects_it | $jq_filter_project_required_load_ts_templates")
+	)
 
-	# Load required config parameters for each project
-	for ((i=0; i<$num_of_projects; i++)); do
-		local config_project_content="$(echo $config_json_content | jq ".projects[$i]")"
-		local project_name="$(echo $config_project_content | jq -r ".name")"
-		local project_short_name="$(echo $config_project_content | jq -r ".shortName")"
-		local project_cli_char="$(echo $config_project_content | jq -r ".cliChar")"
-		local project_type="$(echo $config_project_content | jq -r ".type")"
-		local project_is_dependant="$(echo $config_project_content | jq -r ".dependant")"
-		local project_has_urls="$(echo $config_project_content | jq -r 'has("urls")')"
-		local project_track_project="$(echo $config_project_content | jq -r 'has("tracksProject")')"
-		local project_env_variables="$(echo $config_project_content | jq -r ".environmentVariables")"
-		local project_dir_env_var="$(echo $project_env_variables | jq -r ".rootDir")"
-		local project_env_name_env_var="$(echo $project_env_variables | jq -r ".envName")"
-		local project_dir="${!project_dir_env_var}"
-		local project_env_name="${!project_env_name_env_var}"
+	# Get environment variable config parameters
+	project_dirs=( $(echo "$config_json_content" | jq -r "$jq_filter_project_env_variables.$cfg_env_variable_key_root_dir") )
+	project_virtual_env_names=( $(echo "$config_json_content" | jq -r "$jq_filter_project_env_variables.$cfg_env_variable_key_env_name") )
+	project_db_names=( $(echo "$config_json_content" | jq -r "$jq_filter_project_env_variables.$cfg_env_variable_key_db_name") )
 
-		local project_index_varname="$(get_project_index_varname "${project_short_name}")"
-		local project_index_varname_long="$(get_project_index_varname "${project_name}")"
-		local project_index_varname_char="$(get_project_index_varname "${project_cli_char}")"
+	# Expands environment variables into their values
+	project_dirs=( $(expand_env_variable_values "${project_dirs[@]}") )
+	project_virtual_env_names=( $(expand_env_variable_values "${project_virtual_env_names[@]}") )
+	project_db_names=( $(expand_env_variable_values "${project_db_names[@]}") )
+
+	# Create global variables to index projects
+	for project_i in "${project_indices[@]}"; do
+		local project_index_varname="$(get_project_index_varname "${project_short_names[$project_i]}")"
+		local project_index_varname_long="$(get_project_index_varname "${project_names[$project_i]}")"
+		local project_index_varname_char="$(get_project_index_varname "${project_chars[$project_i]}")"
 
 		# Not ideal but seemingly the only way to declare a global variable in a function when the name
 		# of that variable is stored in another variable. Otherwise I can simply use name=value syntax
-		export ${project_index_varname}="$i"
-		export ${project_index_varname_long}="$i"
-		export ${project_index_varname_char}="$i"
-		local project_index="${!project_index_varname}"
+		export ${project_index_varname}="$project_i"
+		export ${project_index_varname_long}="$project_i"
+		export ${project_index_varname_char}="$project_i"
+	done
 
-		projects+=("$project_name" "$project_short_name")
-		project_indices+=("$project_index")
-		project_names[$project_index]="$project_name"
-		project_short_names[$project_index]="$project_short_name"
-		project_chars[$project_index]="$project_cli_char"
-		project_types[$project_index]="$project_type"
-		project_dirs[$project_index]="$project_dir"
-		project_virtual_env_names[$project_index]="$project_env_name"
-
-		for evk in $(echo $config_project_content | jq -r ".environmentVariables | keys[]"); do
-			env_vars_required+=("$(echo $project_env_variables | jq -r ".$evk")")
-		done
-
-		if [[ "$project_is_dependant" = 'true' ]]; then
-			dependant_project_indices+=("${project_index}")
-		else
-			independant_project_indices+=("${project_index}")
-		fi
-
-		if [[ "$project_has_urls" = 'true' ]]; then
-			# TODO: Implement arbitrary url names
-			local url_env_var_name="$(echo $project_env_variables | jq -r ".url")"
-			local url_local="$(echo $config_project_content | jq -r ".urls.local")"
-			local url_default="$(echo $config_project_content | jq -r ".urls.default")"
-
-			projects_with_url_env_var_indices+=("$project_index")
-			project_url_env_var_names["$project_index"]="$url_env_var_name"
-			project_url_local["$project_index"]="$url_local"
-			project_url_default["$project_index"]="$url_default"
-		fi
-
-		if [[ "$project_track_project" = 'true' ]]; then
-			local tracked_project="$(echo $config_project_content | jq -r ".tracksProject")"
-			local tracked_project_i="$(get_project_index "$tracked_project")"
-
-			tracked_projects+=("$tracked_project_i")
-			project_tracked_by["$tracked_project_i"]="$project_index"
-
-		else
-			git_independent_projects+=("$project_index")
-		fi
-
-		case "$project_type" in
-			"$project_type_django")
-				local project_port="$(echo $config_project_content | jq -r ".port")"
-				local has_celery_app="$(echo $config_project_content | jq -r 'has("celeryAppName")')"
-				local has_load_termsheet_templates="$(echo $config_project_content | jq -r 'has("loadTermsheetTemplates")')"
-				local project_db_name_env_var="$(echo $project_env_variables | jq -r ".dbName")"
-				local project_db_name="${!project_db_name_env_var}"
-
-				project_virtual_env_types[$project_index]="$virtual_env_type_py"
-				project_ports[$project_index]="$project_port"
-				project_db_names[$project_index]="$project_db_name"
-
-				if [[ "$has_celery_app" = 'true' ]]; then
-					local project_celery_app_name="$(echo $config_project_content | jq -r ".celeryAppName")"
-					project_celery_app_names[$project_index]="$project_celery_app_name"
-				fi
-
-				if [[ "$has_load_termsheet_templates" = 'true' ]]; then
-					project_requires_load_termsheet_templates[$project_index]='true'
-				else
-					project_requires_load_termsheet_templates[$project_index]='false'
-				fi
-				;;
-
-			"$project_type_node")
-				project_virtual_env_types[$project_index]="$virtual_env_type_node"
-				;;
-		esac
+	# Pull additional config parameters for any git dependant projects
+	for project_i in "${git_dependant_project_indices[@]}"; do
+		local tracked_project="$(echo "$config_json_content" | jq -r ".$cfg_key_projects[$project_i].$cfg_key_tracks_project")"
+		local tracked_project_i="$(get_project_index "$tracked_project")"
+		tracked_projects+=("$tracked_project_i")
+		project_tracked_by["$tracked_project_i"]="$project_index"
 	done
 
 	return 0
 }
 
+function create_jq_filter_check_for_array_of_keys() {
+	local keys=("$@")
+	local jq_filter=''
+
+	for key in "${keys[@]}"; do
+		jq_filter+="has(\"$key\") and "
+	done
+
+	jq_filter="${jq_filter% and }"
+	printf "$jq_filter\n"
+}
+
+function create_jq_filter_check_for_valid_value() {
+	local valid_values=("$@")
+	local jq_filter=''
+
+	for val in "${valid_values[@]}"; do
+		jq_filter+="index(\"$val\") or "
+	done
+
+	jq_filter="${jq_filter% or }"
+	printf "$jq_filter\n"
+}
+
 function validate_config() {
 	local config_json_content="$1"
 	local validation_failed='false'
-	local num_of_projects="$(echo $config_json_content | jq ".projects | length")"
 
-	# Load required config parameters for each project
-	for ((i=0; i<$num_of_projects; i++)); do
-		local required_keys_missing='false'
-		local required_keys_missing_for_proj_type='false'
-		local required_env_variable_keys_missing='false'
-		local required_env_variable_keys_missing_for_proj_type='false'
-		local project_type_invalid='false'
-		local url_keys_missing='false'
+	local jq_filter_unique_check="length == (unique | length)"
+	local jq_filter_required_key_check="$(create_jq_filter_check_for_array_of_keys "${cfg_project_required_fields[@]}")"
+	local jq_filter_required_env_variable_key_check="$( \
+		create_jq_filter_check_for_array_of_keys "${cfg_project_required_env_variable_fields[@]}" \
+	)"
+	local jq_filter_valid_project_type="$(create_jq_filter_check_for_valid_value "${cfg_allowed_project_types[@]}")"
+	local jq_filter_urls_required_key_check="$(create_jq_filter_check_for_array_of_keys "${cfg_required_urls[@]}")"
+	local jq_filter_has_urls="has(\"$cfg_key_urls\")"
+	local jq_filter_urls_setup_check="
+		($jq_filter_has_urls | not) or
+		(($jq_filter_has_urls) and (.$cfg_key_urls | $jq_filter_urls_required_key_check))"
+	local jq_filter_django_required_key_check="$(create_jq_filter_check_for_array_of_keys "${cfg_django_required_fields[@]}")"
+	local jq_filter_django_env_variable_required_key_check="$(create_jq_filter_check_for_array_of_keys "${cfg_django_required_env_variable_fields[@]}")"
+	local jq_filter_project_setup_check="
+		if .$cfg_key_type == \"$project_type_django\"
+		then (($jq_filter_django_required_key_check) and (.$cfg_key_env_variables | $jq_filter_django_env_variable_required_key_check))
+		else true end"
 
-		local -a missing_required_keys
-		local -a missing_required_keys_for_proj_type
-		local -a missing_required_env_variable_keys
-		local -a missing_required_env_variable_keys_for_proj_type
-		local -a missing_urls_keys
+	# Run validation checks on config and store results
+	local -a project_indices=( $(echo "$config_json_content" | jq -r ".$cfg_key_projects | keys[]") )
+	local -a project_names=( $(echo "$config_json_content" | jq -r "$jq_filter_projects_it.$cfg_key_name") )
+	local -a project_names_are_valid=( $(echo "$config_json_content" | jq -r "$jq_filter_projects_it.$cfg_key_name | test(\"$cfg_valid_name_regex\")") )
+	local -a project_short_names_are_valid=(
+		$(echo "$config_json_content" | jq -r "$jq_filter_projects_it.$cfg_key_short_name | test(\"$cfg_valid_name_regex\")")
+	)
+	local -a project_chars_are_valid=(
+		$(echo "$config_json_content" | jq -r "$jq_filter_projects_it.$cfg_key_cli_char | test(\"$cfg_valid_char_regex\")")
+	)
+	local project_short_names_are_unique="$(echo "$config_json_content" | jq -r "[$jq_filter_projects_it.$cfg_key_short_name] | $jq_filter_unique_check")"
+	local project_chars_are_unique="$(echo "$config_json_content" | jq -r "[$jq_filter_projects_it.$cfg_key_cli_char] | $jq_filter_unique_check")"
+	local -a projects_have_required_keys=( $(echo "$config_json_content" | jq -r "$jq_filter_projects_it | $jq_filter_required_key_check") )
+	local -a projects_have_required_env_variable_keys=(
+		$(echo "$config_json_content" | jq -r "$jq_filter_project_env_variables | $jq_filter_required_env_variable_key_check")
+	)
+	local -a projects_have_valid_types=( $(echo "$config_json_content" | jq -r "$jq_filter_projects_it.$cfg_key_type | $jq_filter_valid_project_type") )
+	local -a projects_have_valid_type_setup=( $(echo "$config_json_content" | jq -r "$jq_filter_projects_it | $jq_filter_project_setup_check") )
+	local -a projects_have_valid_url_setup=( $(echo "$config_json_content" | jq -r "$jq_filter_projects_it | $jq_filter_urls_setup_check") )
 
-		local config_project_content="$(echo $config_json_content | jq ".projects[$i]")"
-		local project_name="$(echo $config_project_content | jq -r ".name")"
-		local project_type="$(echo $config_project_content | jq -r ".type")"
-		local project_has_urls="$(echo $config_project_content | jq -r 'has("urls")')"
-		local config_project_env_variables="$(echo $config_project_content | jq ".environmentVariables")"
+	# Check for failed validation and inform user of failure
+	if [[ "$project_short_names_are_unique" = 'false' ]]; then
+		validation_failed='true'
+		print_format "$style_error" "Project short names in config must be unique"
+	fi
 
-		for key in "${cfg_project_required_fields[@]}"; do
-			if [[ "$(echo "$config_project_content" | jq -r "has(\"$key\")")" = 'false' ]]; then
-				required_keys_missing='true'
-				missing_required_keys+=("$key")
-			fi
-		done
+	if [[ "$project_chars_are_unique" = 'false' ]]; then
+		validation_failed='true'
+		print_format "$style_error" "Project cli chars in config must be unique"
+	fi
 
-		for key in "${cfg_project_required_env_variable_fields[@]}"; do
-			if [[ "$(echo "$config_project_env_variables" | jq -r "has(\"$key\")")" = 'false' ]]; then
-				required_env_variable_keys_missing='true'
-				missing_required_env_variable_keys+=("$key")
-			fi
-		done
-
-		if ! is_in_array "$project_type" "${cfg_allowed_project_types[@]}"; then
-			project_type_invalid='true'
-			print_format "$style_error" "Project $i '$project_name' has invalid type"
-
-		else
-			case "$project_type" in
-				"$project_type_django")
-					for key in "${cfg_django_required_fields[@]}"; do
-						if [[ "$(echo "$config_project_content" | jq -r "has(\"$key\")")" = 'false' ]]; then
-							required_keys_missing_for_proj_type='true'
-							missing_required_keys_for_proj_type+=("$key")
-						fi
-					done
-
-					for key in "${cfg_django_required_env_variable_fields[@]}"; do
-						if [[ "$(echo "$config_project_env_variables" | jq -r "has(\"$key\")")" = 'false' ]]; then
-							required_env_variable_keys_missing_for_proj_type='true'
-							missing_required_env_variable_keys_for_proj_type+=("$key")
-						fi
-					done
-				;;
-			esac
-		fi
-
-		if [[ "$project_has_urls" = 'true' ]]; then
-			if [[ "$(echo "$config_project_env_variables" | jq -r 'has("url")')" = 'true' ]]; then
-				for url_name in "${cfg_required_urls[@]}"; do
-					if [[ ! "$(echo "$config_project_content" | jq -r ".urls | has(\"$url_name\")")" = 'true' ]]; then
-						url_keys_missing='true'
-						missing_urls_keys+=("$url_name")
-					fi
-				done
-			else
-				url_keys_missing='true'
-			fi
-		fi
-
-		if [[ "$missing_required_keys" = 'true' \
-				|| "$required_keys_missing_for_proj_type" = 'true' \
-				|| "$required_env_variable_keys_missing" = 'true' \
-				|| "$required_env_variable_keys_missing_for_proj_type" = 'true' \
-				|| "$project_type_invalid" = 'true' \
-				|| "$url_keys_missing" = 'true' \
-		]]; then
+	for project_i in ${!project_indices[@]}; do
+		if [[ "${project_names_are_valid[$project_i]}" = 'false' ]]; then
 			validation_failed='true'
-		fi
-
-		if [[ "$missing_required_keys" = 'true' || "$required_keys_missing_for_proj_type" = 'true' ]]; then
 			print_format "$style_error" \
-				"Project $i '$project_name' is missing the following keys: ${missing_required_keys[*]} ${missing_required_keys_for_proj_type[*]}"
+			"Project $project_i '${project_names[$project_i]}' has an invalid name: Only characters, digits and _ are allowed"
 		fi
 
-		if [[ "$required_env_variable_keys_missing" = 'true' || "$required_env_variable_keys_missing_for_proj_type" = 'true' ]]; then
+		if [[ "${project_short_names_are_valid[$project_i]}" = 'false' ]]; then
+			validation_failed='true'
 			print_format "$style_error" \
-				"Project $i '$project_name' is missing the following environment variables: ${missing_required_keys[*]} ${missing_required_env_variable_keys[*]}"
+			"Project $project_i '${project_names[$project_i]}' has an invalid short name: Only characters, digits and _ are allowed"
 		fi
 
-		if [[ "$url_keys_missing" = 'true' ]]; then
-			print_format "$style_error" "Project $i '$project_name' is missing the following urls: ${missing_urls_keys[*]}"
+		if [[ "${project_chars_are_valid[$project_i]}" = 'false' ]]; then
+			validation_failed='true'
+			print_format "$style_error" \
+			"Project $project_i '${project_names[$project_i]}' has an invalid cli char: Only characters and digits are allowed"
+		fi
+
+		if [[ "${projects_have_required_keys[$project_i]}" = 'false' ]]; then
+			validation_failed='true'
+			print_format "$style_error" \
+			"Project $project_i '${project_names[$project_i]}' config requires following keys: ${cfg_project_required_fields[*]}"
+		fi
+
+		if [[ "${projects_have_required_env_variable_keys[$project_i]}" = 'false' ]]; then
+			validation_failed='true'
+			print_format "$style_error" \
+			"Project $project_i '${project_names[$project_i]}' config requires following env variables: ${cfg_project_required_env_variable_fields[*]}"
+		fi
+
+		if [[ "${projects_have_valid_types[$project_i]}" = 'false' ]]; then
+			validation_failed='true'
+			print_format "$style_error" \
+			"Project $project_i '${project_names[$project_i]}' is not one of the supported types: ${cfg_allowed_project_types[*]}"
+		fi
+
+		if [[ "${projects_have_valid_type_setup[$project_i]}" = 'false' ]]; then
+			validation_failed='true'
+			print_format "$style_error" \
+			"Project $project_i '${project_names[$project_i]}' config requires following django keys: ${cfg_django_required_fields[*]}"
+			print_format "$style_error" \
+			"Project $project_i '${project_names[$project_i]}' config requires following django env variables: ${cfg_django_required_env_variable_fields[*]}"
+		fi
+
+		if [[ "${projects_have_valid_url_setup[$project_i]}" = 'false' ]]; then
+			validation_failed='true'
+			print_format "$style_error" \
+			"Project $project_i '${project_names[$project_i]}' config requires following urls: ${cfg_required_urls[*]}"
 		fi
 	done
 
-	if [[ "$" = 'true' ]]; then
+	if [[ "$validation_failed" = 'true' ]]; then
 		return 1
 	fi
 
@@ -442,11 +469,11 @@ function get_project_index() {
 function get_project_from_option() {
 	local option="$1"
 
-	if [[ "$option" =~ ^--[a-z].+$ ]]; then
+	if [[ "$option" =~ $valid_project_option_long ]]; then
 		project_short_name="${option:2}"
 		printf "$project_short_name"
 
-	elif [[ "$option" =~ ^-[a-z]$ ]]; then
+	elif [[ "$option" =~ $valid_project_option_char ]]; then
 		project_char="${option:1}"
 		printf "$project_char"
 
@@ -521,7 +548,7 @@ function is_valid_build_command_project() {
 
 	project_i=$(get_project_index "$project") || return 1
 
-	is_in_array "$project_i" "${git_independent_projects[@]}" \
+	is_in_array "$project_i" "${git_independant_project_indices[@]}" \
 	  && is_in_array "$project_i" "${project_indices[@]}"
 }
 
@@ -804,7 +831,7 @@ function get_tmux_session_name_regex() {
 	local session_name_regex="^${script_name}"
 
 	# Dynamically builds regex pattern based on projects in config
-	for proj_i in "${git_independent_projects[@]}"; do
+	for proj_i in "${git_independant_project_indices[@]}"; do
 		local project_short_name="${project_short_names[$proj_i]}"
 		session_name_regex+="(${sesh_name_sep}($project_short_name)=([0-9A-z_/.-]+))?"
 	done
@@ -1217,7 +1244,7 @@ function build() {
 	local -i tmux_session_rematch_ret=$?
 	local tmux_sesh_name_new="${script_name}"
 
-	for proj_i in "${git_independent_projects[@]}"; do
+	for proj_i in "${git_independant_project_indices[@]}"; do
 		local branch_to="${project_branches_to[$proj_i]}"
 
 		if [[ -n "$branch_to" ]]; then
