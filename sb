@@ -239,8 +239,8 @@ function load_config() {
 	local jq_filter_virtual_env_types="if .$cfg_key_type == \"$project_type_django\" then \"$virtual_env_type_py\" else .$cfg_key_type end"
 	local jq_filter_dependent_project_indicies="to_entries[] | if .value.$cfg_key_dependant == true then .key else empty end"
 	local jq_filter_independent_project_indicies="to_entries[] | if .value.$cfg_key_dependant == false then .key else empty end"
-	local jq_filter_git_independent_project_indicies="to_entries[] | if .value.$cfg_key_tracks_project then .key else empty end"
-	local jq_filter_git_dependent_project_indicies="to_entries[] | if .value.$cfg_key_tracks_project then empty else .key end"
+	local jq_filter_git_independent_project_indicies="to_entries[] | if .value.$cfg_key_tracks_project then empty else .key end"
+	local jq_filter_git_dependent_project_indicies="to_entries[] | if .value.$cfg_key_tracks_project then .key else empty end"
 	local jq_filter_projects_with_urls_indicies="to_entries[] | if .value.$cfg_key_urls then .key else empty end"
 	local jq_filter_project_required_load_ts_templates=".$cfg_key_load_ts_templates//false"
 
