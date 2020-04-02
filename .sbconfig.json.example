@@ -55,7 +55,7 @@
 			"port": 8002,
 			"urls": {
 				"local": "http://127.0.0.1:8002",
-				"default": "https://kodiak.originmarkets-labs.com/",
+				"default": "https://kodiak.originmarkets-prd.com/",
 				"develop": "https://kodiak.originmarkets-dev.com/",
 				"master": "https://kodiak.originmarkets-labs.com/"
 			},
