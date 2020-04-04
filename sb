@@ -305,11 +305,6 @@ function is_valid_project_for_freeze_command() {
 	[[ "${cfg_project_types[${project_i}]}" == "${PROJECT_TYPE_DJANGO}" ]]
 }
 
-function is_valid_project_tag_for_build_command() {
-	local search="$1"
-	is_in_array "${search}" "${build_command_project_tags[@]}"
-}
-
 function is_valid_run_command_option() {
 	local search="$1"
 	is_in_array "${search}" "${RUN_COMMAND_ALLOWED_OPTIONS[@]}"
@@ -346,7 +341,7 @@ function print_format() {
 	local msg="$2"
 
 	case "${type}" in
-		"${style_command_title}")
+		"${STYLE_COMMAND_TITLE}")
 			printf "\n%s\n" "${FM_YELLOW}${FM_BOLD}TASK:${FM_RESET} ${FM_BOLD}${msg}${FM_RESET}"
 			printf "%s\n" "--------------------------------------------------------------"
 			;;
@@ -596,7 +591,7 @@ function activate_code_env() {
 	local run_install="$3"
 	local title="Loading ${code_type} environment '${env_name}'$([[ "${run_install}" != 'true' ]] || printf ' (with package install)')"
 
-	print_format "${style_command_title}" "${title}"
+	print_format "${STYLE_COMMAND_TITLE}" "${title}"
 
 	source "${VENV_ROOT}/${code_type}/${env_name}/bin/activate" || return 1
 
@@ -617,13 +612,14 @@ function activate_code_env() {
 
 function change_dir() {
 	local dir_name="$1"
-	print_format "${style_command_title}" "Changing directory to '${dir_name}'"
-	cd "${dir_name}"
+	print_format "${STYLE_COMMAND_TITLE}" "Changing directory to '${dir_name}'"
+	cd "${dir_name}" || return 1
+	return 0
 }
 
 function checkout_git_branch() {
 	local branch_name="$1"
-	print_format "${style_command_title}" "Checking out branch '${branch_name}'"
+	print_format "${STYLE_COMMAND_TITLE}" "Checking out branch '${branch_name}'"
 	git fetch --all || return 1
 	git checkout "${branch_name}" || return 1
 	git pull || return 1
@@ -654,7 +650,7 @@ function has_file_changes_between_branches_based_on_pattern() {
 }
 
 function run_command() {
-	print_format "${style_command_title}" "Running command '$*'"
+	print_format "${STYLE_COMMAND_TITLE}" "Running command '$*'"
 	$@
 }
 
@@ -662,7 +658,7 @@ function create_clean_db() {
 	local db_name="$1"
 	local clean_db_name="${db_name}_${CLEAN_DB_SUFFIX}"
 
-	print_format "${style_command_title}" "Creating clean copy of database '${db_name}' as '${clean_db_name}'"
+	print_format "${STYLE_COMMAND_TITLE}" "Creating clean copy of database '${db_name}' as '${clean_db_name}'"
 
 	# Create clean copy of database, overwriting it if it already exists
 	local base_db_exists="$( psql -tAc "SELECT 1 FROM pg_database WHERE datname = '${db_name}'" )"
@@ -691,7 +687,7 @@ function restore_from_clean_db() {
 	local delete_clean_db="$2"
 	local clean_db_name="${db_name}_${CLEAN_DB_SUFFIX}"
 
-	print_format "${style_command_title}" "Restoring database '${db_name}' from '${clean_db_name}'"
+	print_format "${STYLE_COMMAND_TITLE}" "Restoring database '${db_name}' from '${clean_db_name}'"
 
 	local base_db_exists="$( psql -tAc "SELECT 1 FROM pg_database WHERE datname = '${db_name}'" )"
 	local clean_db_exists="$( psql -tAc "SELECT 1 FROM pg_database WHERE datname = '${clean_db_name}'" )"
@@ -723,7 +719,7 @@ function restore_from_clean_db() {
 
 	# Drop clean db if flag is set
 	if [ "${delete_clean_db}" == 'true' ]; then
-		print_format "${style_command_title}" "Deleting clean database '${clean_db_name}' after successful restore"
+		print_format "${STYLE_COMMAND_TITLE}" "Deleting clean database '${clean_db_name}' after successful restore"
 		psql -c "
 			DROP DATABASE \"${clean_db_name}\";
 		" || return 1
@@ -733,18 +729,18 @@ function restore_from_clean_db() {
 }
 
 function django_migrate_db() {
-	print_format "${style_command_title}" 'Django migrate database'
+	print_format "${STYLE_COMMAND_TITLE}" 'Django migrate database'
 	python manage.py migrate || return 1
 }
 
 function load_termsheet_templates() {
-	print_format "${style_command_title}" 'Loading termsheet templates'
+	print_format "${STYLE_COMMAND_TITLE}" 'Loading termsheet templates'
 	python manage.py load_termsheet_templates --noinput || return 1
 }
 
 function django_start_server() {
 	local port="$1"
-	print_format "${style_command_title}" "Starting django server on port '${port}'"
+	print_format "${STYLE_COMMAND_TITLE}" "Starting django server on port '${port}'"
 	python manage.py runserver "${port}"
 }
 
@@ -752,7 +748,7 @@ function django_start_celery() {
 	local app_name="$1"
 	local priority="$2"
 
-	print_format "${style_command_title}" "Starting '${app_name}' celery worker $([[ -z "${priority}" ]] || printf "%s" "(${priority})")"
+	print_format "${STYLE_COMMAND_TITLE}" "Starting '${app_name}' celery worker $([[ -z "${priority}" ]] || printf "%s" "(${priority})")"
 
 	if [[ -n "${priority}" ]]; then
 		celery -A "${app_name}" worker -Q "${priority}"
@@ -762,7 +758,7 @@ function django_start_celery() {
 }
 
 function npm_run_watch() {
-	print_format "${style_command_title}" 'Starting npm watch'
+	print_format "${STYLE_COMMAND_TITLE}" 'Starting npm watch'
 	npm run watch
 }
 
@@ -1518,7 +1514,7 @@ function check() {
 
 	if [[ "${verbose_mode}" == 'true' || "${set_verbose}" == 'true' ]]; then
 		local verbose='true'
-		print_format "${style_command_title}" "${MESSAGE_CHECK}"
+		print_format "${STYLE_COMMAND_TITLE}" "${MESSAGE_CHECK}"
 	fi
 
 	for ev in "${cfg_env_vars_required[@]}"; do
