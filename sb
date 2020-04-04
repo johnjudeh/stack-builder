@@ -1,4 +1,14 @@
 #!/usr/bin/env bash
+#
+# Name: Stack Builder
+# Purpose: A command line tool to manage a stack of projects in a web application.
+#
+# The tool is used for the following tasks:
+#	- Build a stack of projects for specific git branches
+#	- Create a local copy of a database before going into a dirty branch
+#	- Restore a database to a local clean copy after leaving a dirty branch
+#	- Run a command in a specific project from anywhere
+
 
 ######## CONSTANTS ########
 
@@ -175,8 +185,8 @@ readonly -a CFG_ALLOWED_PROJECT_TYPES=(
 	"${PROJECT_TYPE_DJANGO}"
 	"${PROJECT_TYPE_NODE}"
 )
-readonly -a CFG_DJANGO_REQUIRED_FIELDS=("${CFG_KEY_PORT}")
-readonly -a CFG_DJANGO_REQUIRED_ENV_VARIABLE_FIELDS=("${CFG_ENV_VARIABLE_KEY_DB_NAME}")
+readonly -a CFG_DJANGO_REQUIRED_FIELDS=( "${CFG_KEY_PORT}" )
+readonly -a CFG_DJANGO_REQUIRED_ENV_VARIABLE_FIELDS=( "${CFG_ENV_VARIABLE_KEY_DB_NAME}" )
 readonly -a CFG_REQUIRED_URLS=(
 	"${CFG_URL_KEY_DEFAULT}"
 	"${CFG_URL_KEY_LOCAL}"
@@ -220,10 +230,136 @@ declare -a cfg_env_vars_required
 verbose_mode='false'
 
 
-######## CONFIG MANAGEMENT ########
+######## MAPPING FUNCTIONS ########
+
+function get_project_index_varname() {
+	local project="$1"
+	printf "proj_i_${project}"
+}
+
+function get_project_index() {
+	local project="$1"
+	local project_index_varname="$(get_project_index_varname "${project}")"
+
+	if [[ -z "${!project_index_varname}" ]]; then
+		return 1
+	fi
+
+	printf "${!project_index_varname}"
+	return 0
+}
+
+function get_project_from_option() {
+	local option="$1"
+
+	if [[ "${option}" =~ ${VALID_PROJECT_OPTION_LONG} ]]; then
+		project_short_name="${option:2}"
+		printf "${project_short_name}"
+
+	elif [[ "${option}" =~ ${VALID_PROJECT_OPTION_CHAR} ]]; then
+		project_char="${option:1}"
+		printf "${project_char}"
+
+	else
+		return 1
+	fi
+
+	return 0
+}
+
+
+######## UTILITY FUNCTIONS ########
+
+function is_in_array() {
+	local search="$1"
+	local arr=( "${@:2}" )
+
+	for val in "${arr[@]}"; do
+		if [[ "${search}" == "${val}" ]]; then
+			return 0
+		fi
+	done
+
+	return 1
+}
+
+function is_valid_base_option() {
+	local search="$1"
+	is_in_array "${search}" "${ALLOWED_OPTIONS_BASE[@]}"
+}
+
+function is_valid_command() {
+	local search="$1"
+	is_in_array "${search}" "${COMMANDS[@]}"
+}
+
+function is_valid_project() {
+	local search="$1"
+	is_in_array "${search}" "${cfg_projects[@]}"
+}
+
+function is_valid_project_for_freeze_command() {
+	local project="$1"
+	local -i project_i
+	project_i="$(get_project_index "${project}")" || return 1
+	[[ "${cfg_project_types[${project_i}]}" == "${PROJECT_TYPE_DJANGO}" ]]
+}
+
+function is_valid_project_tag_for_build_command() {
+	local search="$1"
+	is_in_array "${search}" "${build_command_project_tags[@]}"
+}
+
+function is_valid_run_command_option() {
+	local search="$1"
+	is_in_array "${search}" "${RUN_COMMAND_ALLOWED_OPTIONS[@]}"
+}
+
+function is_valid_freeze_command_option() {
+	local search="$1"
+	is_in_array "${search}" "${FREEZE_COMMAND_ALLOWED_OPTIONS[@]}"
+}
+
+function is_valid_restore_command_option() {
+	local search="$1"
+	is_in_array "${search}" "${RESTORE_COMMAND_ALLOWED_OPTIONS[@]}"
+}
+
+function is_valid_build_command_project() {
+	local project="$1"
+	local -i project_i
+
+	project_i="$(get_project_index "${project}")" || return 1
+
+	is_in_array "${project_i}" "${cfg_git_independant_project_indices[@]}" \
+		&& is_in_array "${project_i}" "${cfg_project_indices[@]}"
+}
+
+function is_valid_build_command_option() {
+	local option="$1"
+	local project="$(get_project_from_option "${option}")"
+	is_valid_build_command_project "${project}"
+}
+
+function print_format() {
+	local type="$1"
+	local msg="$2"
+
+	case "${type}" in
+		"${style_command_title}")
+			printf "\n%s\n" "${FM_YELLOW}${FM_BOLD}TASK:${FM_RESET} ${FM_BOLD}${msg}${FM_RESET}"
+			printf "%s\n" "--------------------------------------------------------------"
+			;;
+		"${STYLE_ERROR}")
+			printf "[$(date +'%Y-%m-%d T%H:%M:%S')]: ${FM_RED}ERR!${FM_RESET} ${msg}\n" 1>&2
+			;;
+	esac
+
+	return 0
+}
 
 function expand_env_variable_values() {
-	local -a env_vars=("$@")
+	local -a env_vars=( "$@" )
 
 	for env_var in "${env_vars[@]}"; do
 		if [[ -z "${!env_var+x}" ]]; then
@@ -235,6 +371,34 @@ function expand_env_variable_values() {
 
 	return 0
 }
+
+function create_jq_filter_check_for_array_of_keys() {
+	local keys=( "$@" )
+	local jq_filter=''
+
+	for key in "${keys[@]}"; do
+		jq_filter+="has(\"${key}\") and "
+	done
+
+	jq_filter="${jq_filter% and }"
+	printf "${jq_filter}\n"
+}
+
+function create_jq_filter_check_for_valid_value() {
+	local valid_values=( "$@" )
+	local jq_filter=''
+
+	for val in "${valid_values[@]}"; do
+		jq_filter+="index(\"${val}\") or "
+	done
+
+	jq_filter="${jq_filter% or }"
+	printf "${jq_filter}\n"
+}
+
+
+
+######## CONFIG MANAGEMENT ########
 
 function load_config() {
 	local jq_filter_virtual_env_types="if .${CFG_KEY_TYPE} == \"${PROJECT_TYPE_DJANGO}\" then \"${VIRTUAL_ENV_TYPE_PY}\" else .${CFG_KEY_TYPE} end"
@@ -304,35 +468,11 @@ function load_config() {
 	for project_i in "${cfg_git_dependant_project_indices[@]}"; do
 		local tracked_project="$(echo "${config_json_content}" | jq -r ".${CFG_BASE_KEY_PROJECTS}[${project_i}].${CFG_KEY_TRACKS_PROJECT}")"
 		local tracked_project_i="$(get_project_index "${tracked_project}")"
-		cfg_tracked_projects+=("${tracked_project_i}")
+		cfg_tracked_projects+=( "${tracked_project_i}" )
 		cfg_project_tracked_by["${tracked_project_i}"]="${project_i}"
 	done
 
 	return 0
-}
-
-function create_jq_filter_check_for_array_of_keys() {
-	local keys=("$@")
-	local jq_filter=''
-
-	for key in "${keys[@]}"; do
-		jq_filter+="has(\"${key}\") and "
-	done
-
-	jq_filter="${jq_filter% and }"
-	printf "${jq_filter}\n"
-}
-
-function create_jq_filter_check_for_valid_value() {
-	local valid_values=("$@")
-	local jq_filter=''
-
-	for val in "${valid_values[@]}"; do
-		jq_filter+="index(\"${val}\") or "
-	done
-
-	jq_filter="${jq_filter% or }"
-	printf "${jq_filter}\n"
 }
 
 function validate_config() {
@@ -378,54 +518,54 @@ function validate_config() {
 	local -a projects_have_valid_url_setup=( $(echo "${config_json_content}" | jq -r "${JQ_FILTER_PROJECTS_IT} | ${jq_filter_urls_setup_check}") )
 
 	# Check for failed validation and inform user of failure
-	if [[ "${project_short_names_are_unique}" = 'false' ]]; then
+	if [[ "${project_short_names_are_unique}" == 'false' ]]; then
 		validation_failed='true'
 		print_format "${STYLE_ERROR}" "Project short names in config must be unique"
 	fi
 
-	if [[ "${project_chars_are_unique}" = 'false' ]]; then
+	if [[ "${project_chars_are_unique}" == 'false' ]]; then
 		validation_failed='true'
 		print_format "${STYLE_ERROR}" "Project cli chars in config must be unique"
 	fi
 
-	for project_i in ${!cfg_project_indices[@]}; do
-		if [[ "${project_names_are_valid[${project_i}]}" = 'false' ]]; then
+	for project_i in "${!cfg_project_indices[@]}"; do
+		if [[ "${project_names_are_valid[${project_i}]}" == 'false' ]]; then
 			validation_failed='true'
 			print_format "${STYLE_ERROR}" \
 			"Project ${project_i} '${cfg_project_names[${project_i}]}' has an invalid name: Only characters, digits and _ are allowed"
 		fi
 
-		if [[ "${project_short_names_are_valid[${project_i}]}" = 'false' ]]; then
+		if [[ "${project_short_names_are_valid[${project_i}]}" == 'false' ]]; then
 			validation_failed='true'
 			print_format "${STYLE_ERROR}" \
 			"Project ${project_i} '${cfg_project_names[${project_i}]}' has an invalid short name: Only characters, digits and _ are allowed"
 		fi
 
-		if [[ "${project_chars_are_valid[${project_i}]}" = 'false' ]]; then
+		if [[ "${project_chars_are_valid[${project_i}]}" == 'false' ]]; then
 			validation_failed='true'
 			print_format "${STYLE_ERROR}" \
 			"Project ${project_i} '${cfg_project_names[${project_i}]}' has an invalid cli char: Only characters and digits are allowed"
 		fi
 
-		if [[ "${projects_have_required_keys[${project_i}]}" = 'false' ]]; then
+		if [[ "${projects_have_required_keys[${project_i}]}" == 'false' ]]; then
 			validation_failed='true'
 			print_format "${STYLE_ERROR}" \
 			"Project ${project_i} '${cfg_project_names[${project_i}]}' config requires following keys: ${CFG_PROJECT_REQUIRED_FIELDS[*]}"
 		fi
 
-		if [[ "${projects_have_required_env_variable_keys[${project_i}]}" = 'false' ]]; then
+		if [[ "${projects_have_required_env_variable_keys[${project_i}]}" == 'false' ]]; then
 			validation_failed='true'
 			print_format "${STYLE_ERROR}" \
 			"Project ${project_i} '${cfg_project_names[${project_i}]}' config requires following env variables: ${CFG_PROJECT_REQUIRED_ENV_VARIABLE_FIELDS[*]}"
 		fi
 
-		if [[ "${projects_have_valid_types[${project_i}]}" = 'false' ]]; then
+		if [[ "${projects_have_valid_types[${project_i}]}" == 'false' ]]; then
 			validation_failed='true'
 			print_format "${STYLE_ERROR}" \
 			"Project ${project_i} '${cfg_project_names[${project_i}]}' is not one of the supported types: ${CFG_ALLOWED_PROJECT_TYPES[*]}"
 		fi
 
-		if [[ "${projects_have_valid_type_setup[${project_i}]}" = 'false' ]]; then
+		if [[ "${projects_have_valid_type_setup[${project_i}]}" == 'false' ]]; then
 			validation_failed='true'
 			print_format "${STYLE_ERROR}" \
 			"Project ${project_i} '${cfg_project_names[${project_i}]}' config requires following django keys: ${CFG_DJANGO_REQUIRED_FIELDS[*]}"
@@ -433,145 +573,16 @@ function validate_config() {
 			"Project ${project_i} '${cfg_project_names[${project_i}]}' config requires following django env variables: ${CFG_DJANGO_REQUIRED_ENV_VARIABLE_FIELDS[*]}"
 		fi
 
-		if [[ "${projects_have_valid_url_setup[${project_i}]}" = 'false' ]]; then
+		if [[ "${projects_have_valid_url_setup[${project_i}]}" == 'false' ]]; then
 			validation_failed='true'
 			print_format "${STYLE_ERROR}" \
 			"Project ${project_i} '${cfg_project_names[${project_i}]}' config requires following urls: ${CFG_REQUIRED_URLS[*]}"
 		fi
 	done
 
-	if [[ "${validation_failed}" = 'true' ]]; then
+	if [[ "${validation_failed}" == 'true' ]]; then
 		return 1
 	fi
-
-	return 0
-}
-
-
-######## MAPPING FUNCTIONS ########
-
-function get_project_index_varname() {
-	local project="$1"
-	printf "proj_i_${project}"
-}
-
-function get_project_index() {
-	local project="$1"
-	local project_index_varname="$(get_project_index_varname "${project}")"
-
-	if [[ -z "${!project_index_varname}" ]]; then
-		return 1
-	fi
-
-	printf "${!project_index_varname}"
-	return 0
-}
-
-function get_project_from_option() {
-	local option="$1"
-
-	if [[ "${option}" =~ ${VALID_PROJECT_OPTION_LONG} ]]; then
-		project_short_name="${option:2}"
-		printf "${project_short_name}"
-
-	elif [[ "${option}" =~ ${VALID_PROJECT_OPTION_CHAR} ]]; then
-		project_char="${option:1}"
-		printf "${project_char}"
-
-	else
-		return 1
-	fi
-
-	return 0
-}
-
-
-######## UTILITY FUNCTIONS ########
-
-function is_in_array() {
-	local search="$1"
-	local arr=("${@:2}")
-
-	for val in "${arr[@]}"; do
-		if [[ "${search}" = "${val}" ]]; then
-			return 0
-		fi
-	done
-
-	return 1
-}
-
-function is_valid_base_option() {
-	local search="$1"
-	is_in_array "${search}" "${ALLOWED_OPTIONS_BASE[@]}"
-}
-
-function is_valid_command() {
-	local search="$1"
-	is_in_array "${search}" "${COMMANDS[@]}"
-}
-
-function is_valid_project() {
-	local search="$1"
-	is_in_array "${search}" "${cfg_projects[@]}"
-}
-
-function is_valid_project_for_freeze_command() {
-	local project="$1"
-	local -i project_i
-	project_i=$(get_project_index "${project}") || return 1
-	[[ "${cfg_project_types[${project_i}]}" = "${PROJECT_TYPE_DJANGO}" ]]
-}
-
-function is_valid_project_tag_for_build_command() {
-	local search="$1"
-	is_in_array "${search}" "${build_command_project_tags[@]}"
-}
-
-function is_valid_run_command_option() {
-	local search="$1"
-	is_in_array "${search}" "${RUN_COMMAND_ALLOWED_OPTIONS[@]}"
-}
-
-function is_valid_freeze_command_option() {
-	local search="$1"
-	is_in_array "${search}" "${FREEZE_COMMAND_ALLOWED_OPTIONS[@]}"
-}
-
-function is_valid_restore_command_option() {
-	local search="$1"
-	is_in_array "${search}" "${RESTORE_COMMAND_ALLOWED_OPTIONS[@]}"
-}
-
-function is_valid_build_command_project() {
-	local project="$1"
-	local -i project_i
-
-	project_i=$(get_project_index "${project}") || return 1
-
-	is_in_array "${project_i}" "${cfg_git_independant_project_indices[@]}" \
-	  && is_in_array "${project_i}" "${cfg_project_indices[@]}"
-}
-
-function is_valid_build_command_option() {
-	local option="$1"
-	local project="$(get_project_from_option "${option}")"
-	is_valid_build_command_project "${project}"
-}
-
-function print_format() {
-	local type="$1"
-	local msg="$2"
-
-	case "${type}" in
-		"${style_command_title}")
-			printf "\n%s\n" "${FM_YELLOW}${FM_BOLD}TASK:${FM_RESET} ${FM_BOLD}${msg}${FM_RESET}"
-			printf "%s\n" "--------------------------------------------------------------"
-			;;
-		"${STYLE_ERROR}")
-			printf "${FM_RED}ERR!${FM_RESET} ${msg}\n" 1>&2
-			;;
-	esac
 
 	return 0
 }
@@ -583,13 +594,13 @@ function activate_code_env() {
 	local code_type="$1"
 	local env_name="$2"
 	local run_install="$3"
-	local title="Loading ${code_type} environment '${env_name}'$([[ "${run_install}" != 'true' ]] ||  printf ' (with package install)')"
+	local title="Loading ${code_type} environment '${env_name}'$([[ "${run_install}" != 'true' ]] || printf ' (with package install)')"
 
 	print_format "${style_command_title}" "${title}"
 
 	source "${VENV_ROOT}/${code_type}/${env_name}/bin/activate" || return 1
 
-	if [[ "${run_install}" = 'true'  ]]; then
+	if [[ "${run_install}" == 'true'  ]]; then
 		case "${code_type}" in
 			"${VIRTUAL_ENV_TYPE_PY}")
 				pip install -r requirements.txt -U || return 1
@@ -629,7 +640,7 @@ function has_file_changes_between_branches_based_on_pattern() {
 	# there is no local copy or an outdated local copy
 	local remote_branch_to="origin/${branch_to}"
 
-	local -i project_i=$(get_project_index "${project}")
+	local -i project_i="$(get_project_index "${project}")"
 	local project_dir="${cfg_project_dirs[${project_i}]}"
 	local git_output="$(git --no-pager -C "${project_dir}" diff --name-only "${branch_from}..${remote_branch_to}" "${file_pattern_to_find}" )"
 
@@ -662,7 +673,7 @@ function create_clean_db() {
 		return 1
 	fi
 
-	if [[ "${clean_db_exists}" = "1" ]]; then
+	if [[ "${clean_db_exists}" == "1" ]]; then
 		psql -c "
 			DROP DATABASE \"${clean_db_name}\";
 		" || return 1
@@ -699,7 +710,7 @@ function restore_from_clean_db() {
 	" || return 1
 
 	# Drop altered db
-	if [[ "${base_db_exists}" = '1'  ]]; then
+	if [[ "${base_db_exists}" == '1'  ]]; then
 		psql -c "
 			DROP DATABASE \"${db_name}\";
 		" || return 1
@@ -711,7 +722,7 @@ function restore_from_clean_db() {
 	" || return 1
 
 	# Drop clean db if flag is set
-	if [ "${delete_clean_db}" = 'true' ]; then
+	if [ "${delete_clean_db}" == 'true' ]; then
 		print_format "${style_command_title}" "Deleting clean database '${clean_db_name}' after successful restore"
 		psql -c "
 			DROP DATABASE \"${clean_db_name}\";
@@ -760,7 +771,7 @@ function goto_project() {
 	local run_install="$2"
 	local branch="$3"
 
-	local -i project_i=$(get_project_index "${project}")
+	local -i project_i="$(get_project_index "${project}")"
 	local project_dir="${cfg_project_dirs[${project_i}]}"
 	local project_virtual_env_type="${cfg_project_virtual_env_types[${project_i}]}"
 	local project_virtual_env_name="${cfg_project_virtual_env_names[${project_i}]}"
@@ -781,22 +792,22 @@ function setup_project_branch() {
 	local run_install="$2"
 	local branch="$3"
 
-	local -i project_i=$(get_project_index "${project}")
+	local -i project_i="$(get_project_index "${project}")"
 	local project_type="${cfg_project_types[${project_i}]}"
 
 	goto_project "${project}" "${run_install}" "${branch}" || return 1
 
-	if [[ "${project_type}" = "${PROJECT_TYPE_DJANGO}" ]]; then
+	if [[ "${project_type}" == "${PROJECT_TYPE_DJANGO}" ]]; then
 		# These arguments are only required for django projects
 		local run_migrations="$4"
 		local load_ts_templates="$5"
 		local project_requires_load_ts_templates="${cfg_project_requires_load_termsheet_templates[${project_i}]}"
 
-		if [[ "${run_migrations}" = 'true' ]]; then
+		if [[ "${run_migrations}" == 'true' ]]; then
 			django_migrate_db || return 1
 		fi
 
-		if [[ "${project_requires_load_ts_templates}" = 'true' && "${load_ts_templates}" = 'true'  ]]; then
+		if [[ "${project_requires_load_ts_templates}" == 'true' && "${load_ts_templates}" == 'true'  ]]; then
 			load_termsheet_templates || return 1
 		fi
 	fi
@@ -857,19 +868,19 @@ function get_running_tmux_session_with_regex() {
 	for sesh in "${tmux_sessions[@]}"; do
 		if [[ "${sesh}" =~ ${session_name_regex} ]]; then
 			local matched_session_running='true'
-			local num_of_matched_sessions=$((++num_of_matched_sessions))
-			if [[ ${num_of_matched_sessions} -gt 1 ]]; then
+			(( num_of_matched_sessions++ ))
+			if (( num_of_matched_sessions > 1 )); then
 				print_format "${STYLE_ERROR}" "${MESSAGE_MULTIPLE_RUNNING_TMUX_SESSIONS}. Session #${num_of_matched_sessions}: ${sesh}"
 			fi
 		fi
 	done
 
-	if [[ "${matched_session_running}" = 'true' && ${num_of_matched_sessions} -eq 1 ]]; then
+	if [[ "${matched_session_running}" == 'true' ]] && (( num_of_matched_sessions == 1 )); then
 		for match in "${BASH_REMATCH[@]}"; do
 			printf "%s\n" "${match}"
 		done
 		return 0
-	elif [[ "${matched_session_running}" = 'true' ]]; then
+	elif [[ "${matched_session_running}" == 'true' ]]; then
 		return 2
 	else
 		return 1
@@ -903,12 +914,12 @@ function update_tmux_windows_for_project() {
 	local project="$2"
 	local update_type="$3"
 
-	local -i project_i=$(get_project_index "${project}")
+	local -i project_i="$(get_project_index "${project}")"
 	local project_dir="${cfg_project_dirs[${project_i}]}"
 	local project_type="${cfg_project_types[${project_i}]}"
 	local tmux_windows=( $(tmux list-windows -t "${tmux_session_name}" -F "#{window_name}") )
 
-	if [[ "${update_type}" = "${TMUX_UPDATE_TYPE_SET_ENV_VAR}" && ( -z "$4" || -z "$5" ) ]]; then
+	if [[ "${update_type}" == "${TMUX_UPDATE_TYPE_SET_ENV_VAR}" && ( -z "$4" || -z "$5" ) ]]; then
 		print_format "${STYLE_ERROR}" "Environment variables cannot be added as they are not set"
 		return 1
 	else
@@ -1064,7 +1075,7 @@ function refresh_tmux_windows_for_project() {
 	local branch_to="$4"
 	local force_reload="$5"
 
-	local -i project_i=$(get_project_index "${project}")
+	local -i project_i="$(get_project_index "${project}")"
 	local project_dir="${cfg_project_dirs[${project_i}]}"
 	local project_type="${cfg_project_types[${project_i}]}"
 
@@ -1100,7 +1111,7 @@ function refresh_tmux_windows_for_project() {
 				tmux send-keys -t "${tmux_session_name}:${win_name_celery}.1" "C-c" "C-l" || return 1
 			fi
 
-			if [[ ( "${run_install}" = 'true' || "${force_reload}" = 'true' ) && -n "${branch_from}" ]]; then
+			if [[ ( "${run_install}" == 'true' || "${force_reload}" == 'true' ) && -n "${branch_from}" ]]; then
 				# The django server only needs restarting for changes in packages
 				tmux send-keys -t "${tmux_session_name}:${win_name_django}" "C-c" "C-l" || return 1
 			fi
@@ -1119,7 +1130,7 @@ function refresh_tmux_windows_for_project() {
 					"${SCRIPT_NAME} ${COMMAND_SCIPT_RUN} run_django_start_celery ${project} ${project_celery_app_name}" "C-m" || return 1
 			fi
 
-			if [[ "${run_install}" = 'true' || "${force_reload}" = 'true' ]]; then
+			if [[ "${run_install}" == 'true' || "${force_reload}" == 'true' ]]; then
 				# Start up django server if new packages were installed or if window was just opened
 				tmux send-keys -t "${tmux_session_name}:${win_name_django}" \
 					"${SCRIPT_NAME} ${COMMAND_SCIPT_RUN} run_django_start_server ${project} ${project_port}" "C-m" || return 1
@@ -1140,7 +1151,7 @@ function refresh_tmux_windows_for_project() {
 
 			printf "${project} run_install = ${run_install}\n"
 
-			if [[ "${run_install}" = 'true' || "${force_reload}" = 'true' ]]; then
+			if [[ "${run_install}" == 'true' || "${force_reload}" == 'true' ]]; then
 				# If node requirements have changed, npm watch needs to be restarted
 				if [[ -n "${branch_from}" ]]; then
 					tmux send-keys -t "${tmux_session_name}:${win_name_npm_watch}" "C-c" "C-l" || return 1
@@ -1175,6 +1186,7 @@ function handle_base_options() {
 		"${OPTION_HELP}" | "${OPTION_HELP_SHORT}")
 			printf "${MESSAGE_USAGE_HELP}\n"
 			;;
+
 		"${OPTION_VERBOSE}" | "${OPTION_VERBOSE_SHORT}")
 			printf "${MESSAGE_VERBOSE}\n"
 			verbose_mode='true'
@@ -1184,6 +1196,7 @@ function handle_base_options() {
 				return 1
 			fi
 			;;
+
 		"${OPTION_VERSION}")
 			printf "${VERSION}\n"
 			;;
@@ -1197,7 +1210,7 @@ function build() {
 	local -a project_branches_to
 	local -a env_vars_to_set
 
-	if [[ $# -eq 0 ]]; then
+	if (( $# == 0 )); then
 		print_format "${STYLE_ERROR}" "${MESSAGE_NOT_ENOUGH_ARGS}"
 		return 1
 
@@ -1212,9 +1225,9 @@ function build() {
 				local -i project_i
 
 				project="$(get_project_from_option "${option}")" || return 1
-				project_i=$(get_project_index "${project}") || return 1
+				project_i="$(get_project_index "${project}")" || return 1
 
-				if [[ $# -lt ${branch_index} ]]; then
+				if (( $# < branch_index )); then
 					print_format "${STYLE_ERROR}" "${MESSAGE_INCORRECT_NUM_OF_ARGS}"
 					return 1
 
@@ -1255,11 +1268,11 @@ function build() {
 		fi
 	done
 
-	if [[ ${tmux_session_rematch_ret} -ge 2 ]]; then
+	if (( tmux_session_rematch_ret >= 2 )); then
 		# Multiple tmux sessions were found, exiting with error
 		return 1
 
-	elif [[ ${tmux_session_rematch_ret} -eq 1 ]]; then
+	elif (( tmux_session_rematch_ret == 1 )); then
 		# No tmux session was found - creating new environment
 		tmux new-session -d -s "${tmux_sesh_name_new}" -n "${TMUX_WINDOW_NAME_DEFAULT}"
 
@@ -1273,7 +1286,7 @@ function build() {
 
 			if is_valid_build_command_project "${match}"; then
 				local project="${match}"
-				local -i project_i=$(get_project_index "${project}")
+				local -i project_i="$(get_project_index "${project}")"
 				project_branches_from[${project_i}]="${tmux_session_rematch[${after_match_index}]}"
 
 				# This is for projects in the same git repository as another project and therefore track its branch
@@ -1370,14 +1383,14 @@ function build() {
 
 function freeze() {
 	local project="$1"
-	local -i project_i=$(get_project_index "${project}")
+	local -i project_i="$(get_project_index "${project}")"
 
-	if [[ $# -eq 0 ]]; then
+	if (( $# == 0 )); then
 		print_format "${STYLE_ERROR}" "${MESSAGE_NOT_ENOUGH_ARGS}"
 		return 1
 	fi
 
-	if [[ $# -ge 2 ]]; then
+	if (( $# >= 2 )); then
 		if is_valid_freeze_command_option "$2"; then
 			local option="$2"
 
@@ -1420,15 +1433,15 @@ function freeze() {
 function restore() {
 	local project="$1"
 
-	local -i project_i=$(get_project_index "${project}")
+	local -i project_i="$(get_project_index "${project}")"
 	local delete_db='false'
 
-	if [[ $# -eq 0 ]]; then
+	if (( $# == 0 )); then
 		print_format "${STYLE_ERROR}" "${MESSAGE_NOT_ENOUGH_ARGS}"
 		return 1
 	fi
 
-	if [[ $# -ge 2 ]]; then
+	if (( $# >= 2 )); then
 		if is_valid_restore_command_option "$2"; then
 			local option="$2"
 
@@ -1463,7 +1476,7 @@ function restore() {
 function run() {
 	local project="$1"
 
-	if [[ $# -lt 2 ]]; then
+	if (( $# < 2 )); then
 		print_format "${STYLE_ERROR}" "${MESSAGE_INCORRECT_NUM_OF_ARGS}"
 		return 1
 	fi
@@ -1473,7 +1486,7 @@ function run() {
 
 		case "${option}" in
 			"${OPTION_BRANCH}"|"${OPTION_BRANCH_SHORT}")
-				if [[ $# -lt 4 ]]; then
+				if (( $# < 4 )); then
 					print_format "${STYLE_ERROR}" "${MESSAGE_INCORRECT_NUM_OF_ARGS}"
 					return 1
 				else
@@ -1503,7 +1516,7 @@ function check() {
 	local vars_missing='false'
 	local command_on_path='true'
 
-	if [[ "${verbose_mode}" = 'true' || "${set_verbose}" = 'true' ]]; then
+	if [[ "${verbose_mode}" == 'true' || "${set_verbose}" == 'true' ]]; then
 		local verbose='true'
 		print_format "${style_command_title}" "${MESSAGE_CHECK}"
 	fi
@@ -1513,7 +1526,7 @@ function check() {
 			local vars_missing='true'
 			printf "Checking '${ev}' is set... ${FM_RED}UNSET${FM_RESET}\n"
 		else
-			if [[ "${verbose}" = 'true' ]]; then
+			if [[ "${verbose}" == 'true' ]]; then
 				printf "Checking '${ev}' is set... ${FM_GREEN}OK${FM_RESET}\n"
 			fi
 		fi
@@ -1521,7 +1534,7 @@ function check() {
 
 	# Checks if the script is on the PATH
 	if command -v "${SCRIPT_NAME}" &>/dev/null; then
-		if [[ "${verbose}" = 'true' ]]; then
+		if [[ "${verbose}" == 'true' ]]; then
 			printf "Checking '${SCRIPT_NAME}' is on PATH... ${FM_GREEN}OK${FM_RESET}\n"
 		fi
 	else
@@ -1529,11 +1542,11 @@ function check() {
 		printf "Checking '${SCRIPT_NAME}' is on PATH... ${FM_RED}NOT FOUND${FM_RESET}\n"
 	fi
 
-	if [[ "${vars_missing}" = 'true' || "${command_on_path}" = 'false' ]]; then
+	if [[ "${vars_missing}" == 'true' || "${command_on_path}" == 'false' ]]; then
 		printf "\n${FM_RED}CHECK FAILED${FM_RESET}\n"
 		printf "Please resolve issues in ${FM_RED}RED${FM_RESET} before running the program\n"
 		return 1
-	elif [[ "${verbose}" = 'true' ]]; then
+	elif [[ "${verbose}" == 'true' ]]; then
 		printf "\n${FM_GREEN}CHECK PASSED${FM_RESET}\n"
 	fi
 
@@ -1603,7 +1616,7 @@ function handle_command() {
 ######## MAIN SCRIPT ########
 
 function main() {
-	if [[ $# -eq 0 ]]; then
+	if (( $# == 0 )); then
 		# Not enough arguments passed
 		printf "${MESSAGE_NOT_ENOUGH_ARGS}\n\n"
 		printf "${MESSAGE_USAGE_HELP}\n"
@@ -1629,4 +1642,3 @@ function main() {
 }
 
 main "$@" || exit 1
-
