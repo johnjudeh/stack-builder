@@ -11,7 +11,7 @@
 			"loadTermsheetTemplates": true,
 			"environmentVariables": {
 				"rootDir": "BA_ROOT",
-				"envName": "BA_VENV",
+				"virtualenvPath": "BA_VENV",
 				"dbName": "BA_DB"
 			}
 		},
@@ -24,7 +24,7 @@
 			"tracksProject": "bankangle",
 			"environmentVariables": {
 				"rootDir": "BA_NODE_ROOT",
-				"envName": "BA_NODE_NENV"
+				"virtualenvPath": "BA_NODE_NENV"
 			}
 		},
 		{
@@ -42,7 +42,7 @@
 			},
 			"environmentVariables": {
 				"rootDir": "OM_ROOT",
-				"envName": "OM_NENV",
+				"virtualenvPath": "OM_NENV",
 				"url": "OM_URL"
 			}
 		},
@@ -61,7 +61,7 @@
 			},
 			"environmentVariables": {
 				"rootDir": "KOD_ROOT",
-				"envName": "KOD_VENV",
+				"virtualenvPath": "KOD_VENV",
 				"dbName": "KOD_DB",
 				"url": "KOD_URL"
 			}

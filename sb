@@ -40,8 +40,8 @@ readonly PRINT_STYLE_SUCCESS_ISOLATED="\n${PRINT_STYLE_SUCCESS}"
 readonly PRINT_STYLE_FAILURE_ISOLATED="\n${PRINT_STYLE_FAILURE}"
 readonly PRINT_STYLE_ERROR="${FM_RED}ERROR${FM_RESET} [$(date +'%Y-%m-%d T%H:%M:%S')]: %s\n"
 
-readonly VIRTUAL_ENV_TYPE_PY='py'
-readonly VIRTUAL_ENV_TYPE_NODE='node'
+readonly CODE_TYPE_PY='py'
+readonly CODE_TYPE_NODE='node'
 
 readonly PROJECT_TYPE_DJANGO='django'
 readonly PROJECT_TYPE_NODE='node'
@@ -118,7 +118,7 @@ There are a number of possible commands:
 			Prints out the config file found at ${CONFIG_FILEPATH}. All commands
 			depend on this file being accessible
 "
-readonly MESSAGE_CONFIG_FILE_NOT_READABLE="The config file '${CONFIG_FILEPATH}' does not exist or is not readable"
+readonly MESSAGE_CONFIG_UNREADABLE="The config file '${CONFIG_FILEPATH}' does not exist or is not readable"
 readonly MESSAGE_CHECK='Running environment check...'
 readonly MESSAGE_VERBOSE='Verbose mode switched on'
 readonly MESSAGE_NOT_ENOUGH_ARGS='Not enough arguments passed'
@@ -173,7 +173,7 @@ readonly CFG_KEY_URLS='urls'
 readonly CFG_KEY_ENV_VARIABLES='environmentVariables'
 
 readonly CFG_ENV_VARIABLE_KEY_ROOT_DIR='rootDir'
-readonly CFG_ENV_VARIABLE_KEY_ENV_NAME='envName'
+readonly CFG_ENV_VARIABLE_KEY_VIRTUALENV_PATH='virtualenvPath'
 readonly CFG_ENV_VARIABLE_KEY_DB_NAME='dbName'
 readonly CFG_ENV_VARIABLE_KEY_URL='url'
 
@@ -190,7 +190,7 @@ readonly -a CFG_PROJECT_REQUIRED_FIELDS=(
 )
 readonly -a CFG_PROJECT_REQUIRED_ENV_VARIABLE_FIELDS=(
 	"${CFG_ENV_VARIABLE_KEY_ROOT_DIR}"
-	"${CFG_ENV_VARIABLE_KEY_ENV_NAME}"
+	"${CFG_ENV_VARIABLE_KEY_VIRTUALENV_PATH}"
 )
 readonly -a CFG_ALLOWED_PROJECT_TYPES=(
 	"${PROJECT_TYPE_DJANGO}"
@@ -217,8 +217,8 @@ declare -a cfg_project_short_names
 declare -a cfg_project_chars
 declare -a cfg_project_types
 declare -a cfg_project_dirs
-declare -a cfg_project_virtual_env_types
-declare -a cfg_project_virtual_env_names
+declare -a cfg_project_code_types
+declare -a cfg_project_virtual_env_paths
 declare -a cfg_project_ports
 declare -a cfg_project_requires_load_termsheet_templates
 declare -a cfg_project_celery_app_names
@@ -395,7 +395,7 @@ function create_jq_filter_check_for_valid_value() {
 ######## CONFIG MANAGEMENT ########
 
 function load_config() {
-	local jq_filter_virtual_env_types="if .${CFG_KEY_TYPE} == \"${PROJECT_TYPE_DJANGO}\" then \"${VIRTUAL_ENV_TYPE_PY}\" else .${CFG_KEY_TYPE} end"
+	local jq_filter_code_types="if .${CFG_KEY_TYPE} == \"${PROJECT_TYPE_DJANGO}\" then \"${CODE_TYPE_PY}\" else .${CFG_KEY_TYPE} end"
 	local jq_filter_dependent_project_indicies="to_entries[] | if .value.${CFG_KEY_DEPENDANT} == true then .key else empty end"
 	local jq_filter_independent_project_indicies="to_entries[] | if .value.${CFG_KEY_DEPENDANT} == false then .key else empty end"
 	local jq_filter_git_independent_project_indicies="to_entries[] | if .value.${CFG_KEY_TRACKS_PROJECT} then empty else .key end"
@@ -404,7 +404,7 @@ function load_config() {
 	local jq_filter_project_required_load_ts_templates=".${CFG_KEY_LOAD_TS_TEMPLATES}//false"
 
 	if [[ ! -r "${CONFIG_FILEPATH}" ]]; then
-		raise_error "${MESSAGE_CONFIG_FILE_NOT_READABLE}"
+		raise_error "${MESSAGE_CONFIG_UNREADABLE}"
 		return 1
 	fi
 
@@ -418,7 +418,7 @@ function load_config() {
 	cfg_project_short_names=( $(echo "${config_json_content}" | jq -r "${JQ_FILTER_PROJECTS_IT}.${CFG_KEY_SHORT_NAME}") )
 	cfg_project_chars=( $(echo "${config_json_content}" | jq -r "${JQ_FILTER_PROJECTS_IT}.${CFG_KEY_CLI_CHAR}") )
 	cfg_project_types=( $(echo "${config_json_content}" | jq -r "${JQ_FILTER_PROJECTS_IT}.${CFG_KEY_TYPE}") )
-	cfg_project_virtual_env_types=( $(echo "${config_json_content}" | jq -r "${JQ_FILTER_PROJECTS_IT} | ${jq_filter_virtual_env_types}") )
+	cfg_project_code_types=( $(echo "${config_json_content}" | jq -r "${JQ_FILTER_PROJECTS_IT} | ${jq_filter_code_types}") )
 	cfg_dependant_project_indices=( $(echo "${config_json_content}" | jq -r ".${CFG_BASE_KEY_PROJECTS} | ${jq_filter_dependent_project_indicies}") )
 	cfg_independant_project_indices=( $(echo "${config_json_content}" | jq -r ".${CFG_BASE_KEY_PROJECTS} | ${jq_filter_independent_project_indicies}") )
 	cfg_env_vars_required=( $(echo "${config_json_content}" | jq -r "${JQ_FILTER_PROJECT_ENV_VARIABLES}[]") )
@@ -437,12 +437,12 @@ function load_config() {
 
 	# Get environment variable config parameters
 	cfg_project_dirs=( $(echo "${config_json_content}" | jq -r "${JQ_FILTER_PROJECT_ENV_VARIABLES}.${CFG_ENV_VARIABLE_KEY_ROOT_DIR}") )
-	cfg_project_virtual_env_names=( $(echo "${config_json_content}" | jq -r "${JQ_FILTER_PROJECT_ENV_VARIABLES}.${CFG_ENV_VARIABLE_KEY_ENV_NAME}") )
+	cfg_project_virtual_env_paths=( $(echo "${config_json_content}" | jq -r "${JQ_FILTER_PROJECT_ENV_VARIABLES}.${CFG_ENV_VARIABLE_KEY_VIRTUALENV_PATH}") )
 	cfg_project_db_names=( $(echo "${config_json_content}" | jq -r "${JQ_FILTER_PROJECT_ENV_VARIABLES}.${CFG_ENV_VARIABLE_KEY_DB_NAME}") )
 
 	# Expands environment variables into their values
 	cfg_project_dirs=( $(expand_env_variable_values "${cfg_project_dirs[@]}") )
-	cfg_project_virtual_env_names=( $(expand_env_variable_values "${cfg_project_virtual_env_names[@]}") )
+	cfg_project_virtual_env_paths=( $(expand_env_variable_values "${cfg_project_virtual_env_paths[@]}") )
 	cfg_project_db_names=( $(expand_env_variable_values "${cfg_project_db_names[@]}") )
 
 	# Create global variables to index projects
@@ -619,26 +619,26 @@ function task_failure() {
 
 function activate_code_env() {
 	local code_type="$1"
-	local env_name="$2"
+	local env_path="$2"
 	local run_install="$3"
 
-	local title="Loading ${code_type} environment '${env_name}'$(\
+	local title="Loading ${code_type} environment '${env_path##*/}'$(\
 		[[ "${run_install}" != 'true' ]] || echo ' (with package install)')"
 
 	print_task_title "${title}" || return 1
 
-	source "${VENV_ROOT}/${code_type}/${env_name}/bin/activate" || { task_failure; return 1; }
+	source "${env_path}/bin/activate" || { task_failure; return 1; }
 
 	if [[ "${run_install}" == 'true'  ]]; then
 		case "${code_type}" in
-			"${VIRTUAL_ENV_TYPE_PY}")
+			"${CODE_TYPE_PY}")
 				if [[ "${verbose_mode}" == 'true' ]]; then
 					pip install -r requirements.txt -U || { task_failure; return 1; }
 				else
 					pip install -r requirements.txt -U &>/dev/null || { task_failure; return 1; }
 				fi
 				;;
-			"${VIRTUAL_ENV_TYPE_NODE}")
+			"${CODE_TYPE_NODE}")
 				if [[ "${verbose_mode}" == 'true' ]]; then
 					npm install || { task_failure; return 1; }
 					git checkout -- package-lock.json || { task_failure; return 1; }
@@ -887,8 +887,8 @@ function goto_project() {
 
 	local -i project_i="$(get_project_index "${project}")"
 	local project_dir="${cfg_project_dirs[${project_i}]}"
-	local project_virtual_env_type="${cfg_project_virtual_env_types[${project_i}]}"
-	local project_virtual_env_name="${cfg_project_virtual_env_names[${project_i}]}"
+	local project_code_type="${cfg_project_code_types[${project_i}]}"
+	local project_virtualenv_path="${cfg_project_virtual_env_paths[${project_i}]}"
 
 	change_dir "${project_dir}" || return 1
 
@@ -896,7 +896,7 @@ function goto_project() {
 		checkout_git_branch "${branch}" || return 1
 	fi
 
-	activate_code_env "${project_virtual_env_type}" "${project_virtual_env_name}" "${run_install}" \
+	activate_code_env "${project_code_type}" "${project_virtualenv_path}" "${run_install}" \
 		|| return 1
 
 	return 0
