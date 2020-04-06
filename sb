@@ -52,7 +52,7 @@ readonly COMMAND_RESTORE='restore'
 readonly COMMAND_RUN='run'
 readonly COMMAND_CHECK='check'
 readonly COMMAND_SCIPT_RUN='script-run'
-readonly COMMAND_PRINT_CONFIG='print-config'
+readonly COMMAND_PRINT_CONFIG='config'
 readonly COMMAND_RESET='reset'
 readonly COMMANDS=(
 	"${COMMAND_BUILD}"
@@ -114,9 +114,10 @@ There are a number of possible commands:
 	${FM_YELLOW}${COMMAND_RESET}		${FM_CYAN}${SCRIPT_NAME} ${COMMAND_RESET}${FM_RESET}
 			Removes tmux sessions and unlocks waiting windows
 
-	${FM_YELLOW}${COMMAND_PRINT_CONFIG}	${FM_CYAN}${SCRIPT_NAME} ${COMMAND_PRINT_CONFIG}${FM_RESET}
+	${FM_YELLOW}${COMMAND_PRINT_CONFIG}		${FM_CYAN}${SCRIPT_NAME} ${COMMAND_PRINT_CONFIG} [<jq-filter>]${FM_RESET}
 			Prints out the config file found at ${CONFIG_FILEPATH}. All commands
-			depend on this file being accessible
+			depend on this file being accessible. A jq filter can optionally be passed to
+			query the config
 "
 readonly MESSAGE_CONFIG_UNREADABLE="The config file '${CONFIG_FILEPATH}' does not exist or is not readable"
 readonly MESSAGE_CHECK='Running environment check...'
@@ -1710,7 +1711,8 @@ function check() {
 }
 
 function print_config() {
-	jq '.' "${CONFIG_FILEPATH}"
+	local jq_filter="${1:-.}"
+	jq "${jq_filter}" "${CONFIG_FILEPATH}"
 }
 
 function reset() {
@@ -1755,7 +1757,7 @@ function handle_command() {
 			check 'true' || return 1
 			;;
 		"${COMMAND_PRINT_CONFIG}")
-			check && print_config || return 1
+			check && print_config "$@" || return 1
 			;;
 		"${COMMAND_RESET}")
 			check && reset || return 1
