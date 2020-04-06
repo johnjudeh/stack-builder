@@ -93,28 +93,28 @@ readonly MESSAGE_USAGE_HELP="${MESSAGE_USAGE}
 
 There are a number of possible commands:
 
-	${FM_YELLOW}${COMMAND_BUILD}		${FM_CYAN}${SCRIPT_NAME} ${COMMAND_BUILD} [--<project_short_name>|-<proj_cli_char> <project-branch>...]${FM_RESET}
+	${COMMAND_BUILD}		${FM_CYAN}${SCRIPT_NAME} ${COMMAND_BUILD} [--<project_short_name>|-<proj_cli_char> <project-branch>...]${FM_RESET}
 			Builds each specified project and its dependant services with the specified
 			branches. Possible projects depend on your config file
 
-	${FM_YELLOW}${COMMAND_FREEZE}		${FM_CYAN}${SCRIPT_NAME} ${COMMAND_FREEZE} <project> [${OPTION_BRANCH}|${OPTION_BRANCH_SHORT} <branch>]${FM_RESET}
+	${COMMAND_FREEZE}		${FM_CYAN}${SCRIPT_NAME} ${COMMAND_FREEZE} <project> [${OPTION_BRANCH}|${OPTION_BRANCH_SHORT} <branch>]${FM_RESET}
 			Freeze database for project. Uses the master branch by default
 
-	${FM_YELLOW}${COMMAND_RESTORE}		${FM_CYAN}${SCRIPT_NAME} ${COMMAND_RESTORE} <project> [${OPTION_DELETE}|${OPTION_DELETE_SHORT}]${FM_RESET}
+	${COMMAND_RESTORE}		${FM_CYAN}${SCRIPT_NAME} ${COMMAND_RESTORE} <project> [${OPTION_DELETE}|${OPTION_DELETE_SHORT}]${FM_RESET}
 			Restores project database to last time the freeze command was run. Optionally
 			removes clean database after successful restore
 
-	${FM_YELLOW}${COMMAND_RUN}		${FM_CYAN}${SCRIPT_NAME} ${COMMAND_RUN} <project> [${OPTION_BRANCH}|${OPTION_BRANCH_SHORT} <branch>] <command> [<args>]${FM_RESET}
+	${COMMAND_RUN}		${FM_CYAN}${SCRIPT_NAME} ${COMMAND_RUN} <project> [${OPTION_BRANCH}|${OPTION_BRANCH_SHORT} <branch>] <command> [<args>]${FM_RESET}
 			Loads project environment and runs required command in it
 
-	${FM_YELLOW}${COMMAND_CHECK}		${FM_CYAN}${SCRIPT_NAME} ${COMMAND_CHECK}${FM_RESET}
+	${COMMAND_CHECK}		${FM_CYAN}${SCRIPT_NAME} ${COMMAND_CHECK}${FM_RESET}
 			Checks to ensure all required environment variables are set up and script is
 			accessible on your path
 
-	${FM_YELLOW}${COMMAND_RESET}		${FM_CYAN}${SCRIPT_NAME} ${COMMAND_RESET}${FM_RESET}
+	${COMMAND_RESET}		${FM_CYAN}${SCRIPT_NAME} ${COMMAND_RESET}${FM_RESET}
 			Removes tmux sessions and unlocks waiting windows
 
-	${FM_YELLOW}${COMMAND_PRINT_CONFIG}		${FM_CYAN}${SCRIPT_NAME} ${COMMAND_PRINT_CONFIG} [<jq-filter>]${FM_RESET}
+	${COMMAND_PRINT_CONFIG}		${FM_CYAN}${SCRIPT_NAME} ${COMMAND_PRINT_CONFIG} [<jq-filter>]${FM_RESET}
 			Prints out the config file found at ${CONFIG_FILEPATH}. All commands
 			depend on this file being accessible. A jq filter can optionally be passed to
 			query the config
