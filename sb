@@ -38,7 +38,9 @@ readonly PRINT_STYLE_SUCCESS="${FM_GREEN}${FM_BOLD}%s${FM_RESET}\n"
 readonly PRINT_STYLE_FAILURE="${FM_RED}${FM_BOLD}%s${FM_RESET}\n"
 readonly PRINT_STYLE_SUCCESS_ISOLATED="\n${PRINT_STYLE_SUCCESS}"
 readonly PRINT_STYLE_FAILURE_ISOLATED="\n${PRINT_STYLE_FAILURE}"
-readonly PRINT_STYLE_ERROR="${FM_RED}ERROR${FM_RESET} [$(date +'%Y-%m-%d T%H:%M:%S')]: %s\n"
+readonly PRINT_STYLE_ERROR="${FM_RED}${FM_BOLD}ERROR${FM_RESET} [$(
+	date +'%Y-%m-%d T%H:%M:%S'
+)]: %s\n"
 
 readonly CODE_TYPE_PY='py'
 readonly CODE_TYPE_NODE='node'
@@ -126,6 +128,8 @@ readonly MESSAGE_NOT_ENOUGH_ARGS='Not enough arguments passed'
 readonly MESSAGE_UNKNOWN_ARG='Unknown argument'
 readonly MESSAGE_INCORRECT_NUM_OF_ARGS='Incorrect number of arguments passed'
 readonly MESSAGE_UNKNOWN_PROJECT='Unknown project'
+readonly MESSAGE_GIT_PULL_FAILED='Git pull failed as there are local changes that are not in the
+remote yet. Please ensure that all local changes are pushed to the remote before trying again'
 readonly MESSAGE_COMMAND_DOES_NOT_SUPPORT_PROJECT='This command does not support the project'
 readonly MESSAGE_DB_DOES_NOT_EXIST='Database does not exist'
 readonly MESSAGE_MULTIPLE_RUNNING_TMUX_SESSIONS='Multiple tmux sessions matched. Number found:'
@@ -673,11 +677,19 @@ function checkout_git_branch() {
 	if [[ "${verbose_mode}" == 'true' ]]; then
 		git fetch --all || { task_failure; return 1; }
 		git checkout "${branch_name}" || { task_failure; return 1; }
-		git pull || { task_failure; return 1; }
+		git pull --ff-only || {
+			printf "${PRINT_STYLE_ERROR}" "${MESSAGE_GIT_PULL_FAILED}"
+			task_failure
+			return 1
+		}
 	else
 		git fetch --all &>/dev/null || { task_failure; return 1; }
 		git checkout "${branch_name}" &>/dev/null || { task_failure; return 1; }
-		git pull &>/dev/null || { task_failure; return 1; }
+		git pull --ff-only &>/dev/null || {
+			task_failure
+			printf "${PRINT_STYLE_ERROR}" "${MESSAGE_GIT_PULL_FAILED}"
+			return 1
+		}
 	fi
 
 	task_success
