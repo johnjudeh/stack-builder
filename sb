@@ -1265,7 +1265,7 @@ function create_tmux_windows_for_project() {
 				create_tmux_window "${win_django}" "${end}" "${project_dir}" || return 1
 			fi
 
-			if [[ "${project_celery_app_name}" != 'null' ]]
+			if [[ "${project_celery_app_name}" != 'null' ]] \
 				&& ! is_in_array "${win_celery}" "${tmux_windows[@]}"; then
 				create_tmux_window "${win_celery}" "${end}" "${project_dir}" || return 1
 				split_tmux_window "${target_win_celery}" "${project_dir}" || return 1
@@ -1305,7 +1305,7 @@ function delete_tmux_windows_for_project() {
 				kill_tmux_window "${target_win_django}" || return 1
 			fi
 
-			if [[ "${project_celery_app_name}" != 'null' ]]
+			if [[ "${project_celery_app_name}" != 'null' ]] \
 				&& is_in_array "${win_celery}" "${tmux_windows[@]}"; then
 				kill_tmux_window "${target_win_celery}" || return 1
 			fi
@@ -1369,7 +1369,7 @@ function load_env_var_in_tmux_windows_for_project() {
 	local -i project_i="$(get_project_index "${project}")"
 	local project_type="${cfg_project_types[${project_i}]}"
 	local target_win_worker="${tmux_session_name}:${TMUX_WINDOW_NAME_WORKER}"
-	local env_var_set_cmd="export ${env_var_key}=${env_var_value} C-m"
+	local env_var_set_cmd="export ${env_var_key}=${env_var_value}"
 
 	case "${project_type}" in
 		"${PROJECT_TYPE_DJANGO}")
@@ -1379,12 +1379,12 @@ function load_env_var_in_tmux_windows_for_project() {
 			local target_win_celery="${tmux_session_name}:${win_celery}"
 			local project_celery_app_name="${cfg_project_celery_app_names[${project_i}]}"
 
-			tmux send-keys -t "${target_win_django}" "${env_var_set_cmd}" || return 1
-			tmux send-keys -t "${target_win_worker}" "${env_var_set_cmd}" || return 1
+			tmux send-keys -t "${target_win_django}" "${env_var_set_cmd}" 'C-m' || return 1
+			tmux send-keys -t "${target_win_worker}" "${env_var_set_cmd}" 'C-m' || return 1
 
 			if [[ "${project_celery_app_name}" != 'null' ]]; then
-				tmux send-keys -t "${target_win_celery}.0" "${env_var_set_cmd}" || return 1
-				tmux send-keys -t "${target_win_celery}.1" "${env_var_set_cmd}" || return 1
+				tmux send-keys -t "${target_win_celery}.0" "${env_var_set_cmd}" 'C-m' || return 1
+				tmux send-keys -t "${target_win_celery}.1" "${env_var_set_cmd}" 'C-m' || return 1
 			fi
 			;;
 
@@ -1392,8 +1392,8 @@ function load_env_var_in_tmux_windows_for_project() {
 			local win_npm_w="${project}${TMUX_WIN_NAME_NPM_WATCH_SUFFIX}"
 			local target_win_npm_w="${tmux_session_name}:${win_npm_w}"
 
-			tmux send-keys -t "${target_win_npm_w}" "${env_var_set_cmd}" || return 1
-			tmux send-keys -t "${target_win_worker}" "${env_var_set_cmd}" || return 1
+			tmux send-keys -t "${target_win_npm_w}" "${env_var_set_cmd}" 'C-m' || return 1
+			tmux send-keys -t "${target_win_worker}" "${env_var_set_cmd}" 'C-m' || return 1
 			;;
 	esac
 
