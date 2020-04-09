@@ -202,6 +202,7 @@ readonly MESSAGE_FUNCTION_RETURNED_ERROR='Function returned non-zero value'
 
 readonly CLEAN_DB_SUFFIX='clean'
 
+readonly TMUX_CREATE_TYPE_REPLACE='replace'
 readonly TMUX_DEFAULT_LOCK_CHANNEL='lock'
 readonly TMUX_WINDOW_NAME_DEFAULT='default'
 readonly TMUX_WINDOW_NAME_WORKER='worker'
@@ -1180,11 +1181,19 @@ function create_tmux_window() {
 	local window_name="$1"
 	local window_target="$2"
 	local start_dir="$3"
+	local type="$4"
+
+	if [[ -n "${type}" && "${type}" == "${TMUX_CREATE_TYPE_REPLACE}" ]]; then
+		local base_flags='-dk'
+	else
+		local base_flags='-da'
+	fi
 
 	if [[ -n "${start_dir}" ]]; then
-		tmux new-window -da -c "${start_dir}" -t "${window_target}" -n "${window_name}" || return 1
+		tmux new-window ${base_flags} -c "${start_dir}" -t "${window_target}" -n "${window_name}" \
+			|| return 1
 	else
-		tmux new-window -da -t "${window_target}" -n "${window_name}" || return 1
+		tmux new-window ${base_flags} -t "${window_target}" -n "${window_name}" || return 1
 	fi
 
 	return 0
@@ -1214,7 +1223,8 @@ function create_tmux_worker_window() {
 	local tmux_windows=( $(tmux list-windows -t "${tmux_session_name}" -F "#{window_name}") )
 
 	if ! is_in_array "${TMUX_WINDOW_NAME_WORKER}" "${tmux_windows[@]}"; then
-		create_tmux_window "${TMUX_WINDOW_NAME_WORKER}" "${tmux_session_name}:0" || return 1
+		create_tmux_window "${TMUX_WINDOW_NAME_WORKER}" "${tmux_session_name}:0" "" \
+			"${TMUX_CREATE_TYPE_REPLACE}" || return 1
 	fi
 
 	return 0
