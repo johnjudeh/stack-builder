@@ -23,7 +23,6 @@ readonly FM_YELLOW="$(tput setaf 3)"
 readonly FM_MAGENTA="$(tput setaf 5)"
 readonly FM_CYAN="$(tput setaf 6)"
 readonly FM_BOLD="$(tput bold)"
-readonly FM_UNDERLINE="$(tput smul)"
 readonly FM_RESET="$(tput sgr0)"
 
 readonly PRINT_STYLE_TASK_TITLE_QUIET="${FM_YELLOW}${FM_BOLD}TASK:${FM_RESET} %s... "
@@ -90,84 +89,20 @@ readonly RUN_COMMAND_ALLOWED_OPTIONS=( "${OPTION_BRANCH}" "${OPTION_BRANCH_SHORT
 
 readonly FREEZE_COMMAND_DEFAULT_BRANCH='master'
 
-readonly MESSAGE_USAGE="usage: ${SCRIPT_NAME} [${OPTION_HELP}|${OPTION_HELP_SHORT}] [${OPTION_VERSION}] [${OPTION_VERBOSE}|${OPTION_VERBOSE_SHORT}] <command> [<args>]"
-readonly MESSAGE_USAGE_HELP="${MESSAGE_USAGE}
+readonly PROJECT_NAME_REGEX="[A-z][A-z0-9_]+"
+readonly PROJECT_CHAR_REGEX="[a-z0-9]"
 
-There are a number of possible commands:
+readonly VALID_PROJECT_OPTION_LONG="^--${PROJECT_NAME_REGEX}$"
+readonly VALID_PROJECT_OPTION_CHAR="^-${PROJECT_CHAR_REGEX}$"
 
-	${COMMAND_BUILD}		${FM_CYAN}${SCRIPT_NAME} ${COMMAND_BUILD} [--<project_short_name>|-<proj_cli_char> <project-branch>...]${FM_RESET}
-			Builds each specified project and its dependant services with the specified
-			branches. Possible projects depend on your config file
-
-	${COMMAND_FREEZE}		${FM_CYAN}${SCRIPT_NAME} ${COMMAND_FREEZE} <project> [${OPTION_BRANCH}|${OPTION_BRANCH_SHORT} <branch>]${FM_RESET}
-			Freeze database for project. Uses the master branch by default
-
-	${COMMAND_RESTORE}		${FM_CYAN}${SCRIPT_NAME} ${COMMAND_RESTORE} <project> [${OPTION_DELETE}|${OPTION_DELETE_SHORT}]${FM_RESET}
-			Restores project database to last time the freeze command was run. Optionally
-			removes clean database after successful restore
-
-	${COMMAND_RUN}		${FM_CYAN}${SCRIPT_NAME} ${COMMAND_RUN} <project> [${OPTION_BRANCH}|${OPTION_BRANCH_SHORT} <branch>] <command> [<args>]${FM_RESET}
-			Loads project environment and runs required command in it
-
-	${COMMAND_CHECK}		${FM_CYAN}${SCRIPT_NAME} ${COMMAND_CHECK}${FM_RESET}
-			Checks to ensure all required environment variables are set up and script is
-			accessible on your path
-
-	${COMMAND_RESET}		${FM_CYAN}${SCRIPT_NAME} ${COMMAND_RESET}${FM_RESET}
-			Removes tmux sessions and unlocks waiting windows
-
-	${COMMAND_PRINT_CONFIG}		${FM_CYAN}${SCRIPT_NAME} ${COMMAND_PRINT_CONFIG} [<jq-filter>]${FM_RESET}
-			Prints out the config file found at ${CONFIG_FILEPATH}. All commands
-			depend on this file being accessible. A jq filter can optionally be passed to
-			query the config
-"
-readonly MESSAGE_CONFIG_UNREADABLE="The config file '${CONFIG_FILEPATH}' does not exist or is not readable"
-readonly MESSAGE_CHECK='Running environment check...'
-readonly MESSAGE_VERBOSE='Verbose mode switched on'
-readonly MESSAGE_NOT_ENOUGH_ARGS='Not enough arguments passed'
-readonly MESSAGE_UNKNOWN_ARG='Unknown argument'
-readonly MESSAGE_INCORRECT_NUM_OF_ARGS='Incorrect number of arguments passed'
-readonly MESSAGE_UNKNOWN_PROJECT='Unknown project'
-readonly MESSAGE_GIT_PULL_FAILED='Git pull failed as there are local changes that are not in the
-remote yet. Please ensure that all local changes are pushed to the remote before trying again'
-readonly MESSAGE_COMMAND_DOES_NOT_SUPPORT_PROJECT='This command does not support the project'
-readonly MESSAGE_DB_DOES_NOT_EXIST='Database does not exist'
-readonly MESSAGE_MULTIPLE_RUNNING_TMUX_SESSIONS='Multiple tmux sessions matched. Number found:'
-readonly MESSAGE_FUNCTION_RETURNED_ERROR='Function returned non-zero value'
-
-readonly CLEAN_DB_SUFFIX='clean'
-readonly TMUX_DEFAULT_LOCK_CHANNEL='lock'
-readonly TMUX_WINDOW_NAME_DEFAULT='default'
-readonly TMUX_WINDOW_NAME_WORKER='worker'
-readonly TMUX_WIN_NAME_DJANGO_SUFFIX='_django'
-readonly TMUX_WIN_NAME_CELERY_SUFFIX='_celery'
-readonly TMUX_WIN_NAME_NPM_WATCH_SUFFIX='_npm_w'
-readonly SESH_NAME_SEP=';'
-
-readonly TMUX_UPDATE_TYPE_CREATE='create'
-readonly TMUX_UPDATE_TYPE_DELETE='delete'
-readonly TMUX_UPDATE_TYPE_KILL_SIG='killsig'
-readonly TMUX_UPDATE_TYPE_SET_ENV_VAR='setenvv'
-
-readonly FILE_PATTERN_PY_REQUIRMENTS='*requirements*'
-readonly FILE_PATTERN_NODE_REQUIREMENTS='*package.json*'
-readonly FILE_PATTERN_DJANGO_MIGRATIONS='*migrations*'
-readonly FILE_PATTERN_TS_TEMPLATES='*fixtures/termsheet_templates*'
-
-readonly NAME_REGEX="[A-z][A-z0-9_]+"
-readonly CHAR_REGEX="[a-z0-9]"
-
-readonly VALID_PROJECT_OPTION_LONG="^--${NAME_REGEX}$"
-readonly VALID_PROJECT_OPTION_CHAR="^-${CHAR_REGEX}$"
-
-readonly CFG_VALID_NAME_REGEX="^${NAME_REGEX}$"
-readonly CFG_VALID_CHAR_REGEX="^${CHAR_REGEX}$"
+readonly CFG_VALID_PROJECT_NAME_REGEX="^${PROJECT_NAME_REGEX}$"
+readonly CFG_VALID_PROJECT_CHAR_REGEX="^${PROJECT_CHAR_REGEX}$"
 
 readonly CFG_BASE_KEY_PROJECTS='projects'
 
 readonly CFG_KEY_NAME='name'
 readonly CFG_KEY_SHORT_NAME='shortName'
-readonly CFG_KEY_CLI_CHAR='cliChar'
+readonly CFG_KEY_CHAR='char'
 readonly CFG_KEY_TYPE='type'
 readonly CFG_KEY_DEPENDANT='dependant'
 readonly CFG_KEY_PORT='port'
@@ -185,32 +120,105 @@ readonly CFG_ENV_VARIABLE_KEY_URL='url'
 readonly CFG_URL_KEY_DEFAULT='default'
 readonly CFG_URL_KEY_LOCAL='local'
 
-readonly -a CFG_PROJECT_REQUIRED_FIELDS=(
+readonly -a CFG_PROJECT_REQ_KEYS=(
 	"${CFG_KEY_NAME}"
 	"${CFG_KEY_SHORT_NAME}"
-	"${CFG_KEY_CLI_CHAR}"
+	"${CFG_KEY_CHAR}"
 	"${CFG_KEY_TYPE}"
 	"${CFG_KEY_DEPENDANT}"
 	"${CFG_KEY_ENV_VARIABLES}"
 )
-readonly -a CFG_PROJECT_REQUIRED_ENV_VARIABLE_FIELDS=(
+readonly -a CFG_PROJECT_REQ_ENV_VARIABLES=(
 	"${CFG_ENV_VARIABLE_KEY_ROOT_DIR}"
 	"${CFG_ENV_VARIABLE_KEY_VIRTUALENV_PATH}"
 )
-readonly -a CFG_ALLOWED_PROJECT_TYPES=(
-	"${PROJECT_TYPE_DJANGO}"
-	"${PROJECT_TYPE_NODE}"
-)
-readonly -a CFG_DJANGO_REQUIRED_FIELDS=( "${CFG_KEY_PORT}" )
-readonly -a CFG_DJANGO_REQUIRED_ENV_VARIABLE_FIELDS=( "${CFG_ENV_VARIABLE_KEY_DB_NAME}" )
-readonly -a CFG_REQUIRED_URLS=(
-	"${CFG_URL_KEY_DEFAULT}"
-	"${CFG_URL_KEY_LOCAL}"
-)
+readonly -a CFG_ALLOWED_PROJECT_TYPES=( "${PROJECT_TYPE_DJANGO}" "${PROJECT_TYPE_NODE}" )
+readonly -a CFG_DJANGO_REQ_KEYS=( "${CFG_KEY_PORT}" )
+readonly -a CFG_DJANGO_REQ_ENV_VARIABLES=( "${CFG_ENV_VARIABLE_KEY_DB_NAME}" )
+readonly -a CFG_REQUIRED_URLS=( "${CFG_URL_KEY_DEFAULT}" "${CFG_URL_KEY_LOCAL}" )
 
 readonly JQ_FILTER_PROJECTS_IT=".${CFG_BASE_KEY_PROJECTS}[]"
 readonly JQ_FILTER_PROJECT_ENV_VARIABLES="${JQ_FILTER_PROJECTS_IT}.${CFG_KEY_ENV_VARIABLES}"
 readonly JQ_FILTER_PROJECT_URLS="${JQ_FILTER_PROJECTS_IT}.${CFG_KEY_URLS}"
+
+readonly MESSAGE_USAGE="usage: ${SCRIPT_NAME} [${OPTION_HELP}|${OPTION_HELP_SHORT}] [${OPTION_VERBOSE}|${OPTION_VERBOSE_SHORT}] [${OPTION_VERSION}] <command> [<args>]"
+readonly MESSAGE_USAGE_HELP="${MESSAGE_USAGE}
+
+There are a number of possible commands:
+
+	${COMMAND_BUILD}		${FM_CYAN}${SCRIPT_NAME} ${COMMAND_BUILD} [--<proj_short_name>|-<proj_char> <branch>...]${FM_RESET}
+			Builds each specified project and any projects that track it to a specified
+			branch. Possible projects depend on your config file
+
+	${COMMAND_FREEZE}		${FM_CYAN}${SCRIPT_NAME} ${COMMAND_FREEZE} <project> [${OPTION_BRANCH}|${OPTION_BRANCH_SHORT} <branch>]${FM_RESET}
+			Freeze database for project. Uses the master branch by default
+
+	${COMMAND_RESTORE}		${FM_CYAN}${SCRIPT_NAME} ${COMMAND_RESTORE} <project> [${OPTION_DELETE}|${OPTION_DELETE_SHORT}]${FM_RESET}
+			Restores project database to last time the freeze command was run. Optionally
+			removes clean database after successful restore
+
+	${COMMAND_RUN}		${FM_CYAN}${SCRIPT_NAME} ${COMMAND_RUN} <project> [${OPTION_BRANCH}|${OPTION_BRANCH_SHORT} <branch>] <shell-command> [<args>]${FM_RESET}
+			Loads project environment and runs the required shell command in it
+
+	${COMMAND_CHECK}		${FM_CYAN}${SCRIPT_NAME} ${COMMAND_CHECK}${FM_RESET}
+			Checks to ensure all required environment variables are set up and script is
+			accessible on your path
+
+	${COMMAND_RESET}		${FM_CYAN}${SCRIPT_NAME} ${COMMAND_RESET}${FM_RESET}
+			Removes tmux sessions and unlocks waiting windows
+
+	${COMMAND_PRINT_CONFIG}		${FM_CYAN}${SCRIPT_NAME} ${COMMAND_PRINT_CONFIG} [<jq-filter>]${FM_RESET}
+			Prints out the config file found at ${CONFIG_FILEPATH}. All commands
+			depend on this file being accessible. A jq filter can optionally be passed to
+			query the config
+"
+
+readonly MESSAGE_CONFIG_UNREADABLE="The config file '${CONFIG_FILEPATH}' does not exist or is not readable"
+readonly MESSAGE_CFG_NON_UNIQUE_SHORT_NAMES='Project short names in config must be unique'
+readonly MESSAGE_CFG_NON_UNIQUE_CHARS='Project chars in config must be unique'
+readonly MESSAGE_NAME_ALLOWED_CHARS='Only characters, digits and _ are allowed'
+readonly MESSAGE_CFG_INVALID_NAME="has an invalid name: ${MESSAGE_NAME_ALLOWED_CHARS}"
+readonly MESSAGE_CFG_INVALID_SHORT_NAME="has an invalid short name: ${MESSAGE_NAME_ALLOWED_CHARS}"
+readonly MESSAGE_CFG_INVALID_CHAR='has an invalid char: Only characters or digits are allowed'
+readonly MESSAGE_CFG_KEYS_MISSING="requires keys: ${CFG_PROJECT_REQ_KEYS[*]}"
+readonly MESSAGE_CFG_ENVV_MISSING="requires env variables: ${CFG_PROJECT_REQ_ENV_VARIABLES[*]}"
+readonly MESSAGE_CFG_INVALID_TYPE="is not of the supported types: ${CFG_ALLOWED_PROJECT_TYPES[*]}"
+readonly MESSAGE_CFG_INVALID_DJANGO_KEY_SETUP="requires django keys: ${CFG_DJANGO_REQ_KEYS[*]}"
+readonly MESSAGE_CFG_INVALID_DJANGO_ENVV_SETUP="requires django env variables: ${CFG_DJANGO_REQ_ENV_VARIABLES[*]}"
+readonly MESSAGE_CFG_INVALID_URL_SETUP="requires following urls: ${CFG_REQUIRED_URLS[*]}"
+
+readonly MESSAGE_CHECK='Running environment check...'
+readonly MESSAGE_VERBOSE='Verbose mode switched on'
+readonly MESSAGE_NOT_ENOUGH_ARGS='Not enough arguments passed'
+readonly MESSAGE_UNKNOWN_ARG='Unknown argument'
+readonly MESSAGE_INCORRECT_NUM_OF_ARGS='Incorrect number of arguments passed'
+readonly MESSAGE_UNKNOWN_PROJECT='Unknown project'
+readonly MESSAGE_GIT_PULL_FAILED='Git pull failed as there are local changes that are not in the
+remote yet. Please ensure that all local changes are pushed to the remote before trying again'
+readonly MESSAGE_COMMAND_DOES_NOT_SUPPORT_PROJECT='This command does not support the project'
+readonly MESSAGE_DB_DOES_NOT_EXIST='Database does not exist'
+readonly MESSAGE_MULTIPLE_RUNNING_TMUX_SESSIONS='Multiple tmux sessions matched. Number found:'
+readonly MESSAGE_FUNCTION_RETURNED_ERROR='Function returned non-zero value'
+
+readonly CLEAN_DB_SUFFIX='clean'
+
+readonly TMUX_DEFAULT_LOCK_CHANNEL='lock'
+readonly TMUX_WINDOW_NAME_DEFAULT='default'
+readonly TMUX_WINDOW_NAME_WORKER='worker'
+readonly TMUX_WIN_NAME_DJANGO_SUFFIX='_django'
+readonly TMUX_WIN_NAME_CELERY_SUFFIX='_celery'
+readonly TMUX_WIN_NAME_NPM_WATCH_SUFFIX='_npm_w'
+readonly SESH_NAME_SEP=';'
+
+readonly TMUX_UPDATE_TYPE_CREATE='create'
+readonly TMUX_UPDATE_TYPE_DELETE='delete'
+readonly TMUX_UPDATE_TYPE_STOP='stop'
+readonly TMUX_UPDATE_TYPE_SET_ENV_VAR='setenvv'
+
+readonly FILE_PATTERN_PY_REQUIRMENTS='*requirements*'
+readonly FILE_PATTERN_NODE_REQUIREMENTS='*package.json*'
+readonly FILE_PATTERN_DJANGO_MIGRATIONS='*migrations*'
+readonly FILE_PATTERN_TS_TEMPLATES='*fixtures/termsheet_templates*'
 
 
 ######## CONFIG VARIABLES  ########
@@ -223,7 +231,7 @@ declare -a cfg_project_chars
 declare -a cfg_project_types
 declare -a cfg_project_dirs
 declare -a cfg_project_code_types
-declare -a cfg_project_virtual_env_paths
+declare -a cfg_project_virtualenv_paths
 declare -a cfg_project_ports
 declare -a cfg_project_requires_load_termsheet_templates
 declare -a cfg_project_celery_app_names
@@ -234,7 +242,7 @@ declare -a cfg_projects_with_url_env_var_indices
 declare -a cfg_project_url_env_var_names
 declare -a cfg_project_url_local
 declare -a cfg_project_url_default
-declare -a cfg_tracked_projects
+declare -a cfg_tracked_project_indices
 declare -a cfg_git_independant_project_indices
 declare -a cfg_git_dependant_project_indices
 declare -a cfg_project_tracked_by
@@ -269,8 +277,8 @@ function get_project_from_option() {
 	local option="$1"
 
 	if [[ "${option}" =~ ${VALID_PROJECT_OPTION_LONG} ]]; then
-		project_short_name="${option:2}"
-		printf "${PRINT_STYLE_OUTPUT_NO_NEW_LINE}" "${project_short_name}"
+		project_name="${option:2}"
+		printf "${PRINT_STYLE_OUTPUT_NO_NEW_LINE}" "${project_name}"
 
 	elif [[ "${option}" =~ ${VALID_PROJECT_OPTION_CHAR} ]]; then
 		project_char="${option:1}"
@@ -300,18 +308,18 @@ function is_in_array() {
 }
 
 function is_valid_base_option() {
-	local search="$1"
-	is_in_array "${search}" "${ALLOWED_OPTIONS_BASE[@]}"
+	local option="$1"
+	is_in_array "${option}" "${ALLOWED_OPTIONS_BASE[@]}"
 }
 
 function is_valid_command() {
-	local search="$1"
-	is_in_array "${search}" "${COMMANDS[@]}"
+	local command="$1"
+	is_in_array "${command}" "${COMMANDS[@]}"
 }
 
 function is_valid_project() {
-	local search="$1"
-	is_in_array "${search}" "${cfg_projects[@]}"
+	local project="$1"
+	is_in_array "${project}" "${cfg_projects[@]}"
 }
 
 function is_valid_project_for_freeze_command() {
@@ -321,22 +329,7 @@ function is_valid_project_for_freeze_command() {
 	[[ "${cfg_project_types[${project_i}]}" == "${PROJECT_TYPE_DJANGO}" ]]
 }
 
-function is_valid_run_command_option() {
-	local search="$1"
-	is_in_array "${search}" "${RUN_COMMAND_ALLOWED_OPTIONS[@]}"
-}
-
-function is_valid_freeze_command_option() {
-	local search="$1"
-	is_in_array "${search}" "${FREEZE_COMMAND_ALLOWED_OPTIONS[@]}"
-}
-
-function is_valid_restore_command_option() {
-	local search="$1"
-	is_in_array "${search}" "${RESTORE_COMMAND_ALLOWED_OPTIONS[@]}"
-}
-
-function is_valid_build_command_project() {
+function is_valid_project_for_build_command() {
 	local project="$1"
 	local -i project_i
 
@@ -346,10 +339,25 @@ function is_valid_build_command_project() {
 		&& is_in_array "${project_i}" "${cfg_project_indices[@]}"
 }
 
+function is_valid_freeze_command_option() {
+	local option="$1"
+	is_in_array "${option}" "${FREEZE_COMMAND_ALLOWED_OPTIONS[@]}"
+}
+
+function is_valid_restore_command_option() {
+	local option="$1"
+	is_in_array "${option}" "${RESTORE_COMMAND_ALLOWED_OPTIONS[@]}"
+}
+
+function is_valid_run_command_option() {
+	local option="$1"
+	is_in_array "${option}" "${RUN_COMMAND_ALLOWED_OPTIONS[@]}"
+}
+
 function is_valid_build_command_option() {
 	local option="$1"
 	local project="$(get_project_from_option "${option}")"
-	is_valid_build_command_project "${project}"
+	is_valid_project_for_build_command "${project}"
 }
 
 function raise_error() {
@@ -400,14 +408,30 @@ function create_jq_filter_check_for_valid_value() {
 ######## CONFIG MANAGEMENT ########
 
 function load_config() {
-	local jq_filter_code_types="if .${CFG_KEY_TYPE} == \"${PROJECT_TYPE_DJANGO}\" then \"${CODE_TYPE_PY}\" else .${CFG_KEY_TYPE} end"
-	local jq_filter_dependent_project_indicies="to_entries[] | if .value.${CFG_KEY_DEPENDANT} == true then .key else empty end"
-	local jq_filter_independent_project_indicies="to_entries[] | if .value.${CFG_KEY_DEPENDANT} == false then .key else empty end"
-	local jq_filter_git_independent_project_indicies="to_entries[] | if .value.${CFG_KEY_TRACKS_PROJECT} then empty else .key end"
-	local jq_filter_git_dependent_project_indicies="to_entries[] | if .value.${CFG_KEY_TRACKS_PROJECT} then .key else empty end"
-	local jq_filter_projects_with_urls_indicies="to_entries[] | if .value.${CFG_KEY_URLS} then .key else empty end"
-	local jq_filter_project_required_load_ts_templates=".${CFG_KEY_LOAD_TS_TEMPLATES}//false"
+	# Validate and load project stack configuration from JSON file
+	local jq_filter_code_types="
+		if .${CFG_KEY_TYPE} == \"${PROJECT_TYPE_DJANGO}\"
+		then \"${CODE_TYPE_PY}\"
+		else .${CFG_KEY_TYPE} end
+	"
+	local jq_filter_dependent_project_indicies="
+		to_entries[] | if .value.${CFG_KEY_DEPENDANT} == true then .key else empty end
+	"
+	local jq_filter_independent_project_indicies="
+		to_entries[] | if .value.${CFG_KEY_DEPENDANT} == false then .key else empty end
+	"
+	local jq_filter_git_independent_project_indicies="
+		to_entries[] | if .value.${CFG_KEY_TRACKS_PROJECT} then empty else .key end
+	"
+	local jq_filter_git_dependent_project_indicies="
+		to_entries[] | if .value.${CFG_KEY_TRACKS_PROJECT} then .key else empty end
+	"
+	local jq_filter_projects_with_urls_indicies="
+		to_entries[] | if .value.${CFG_KEY_URLS} then .key else empty end
+	"
+	local jq_filter_project_requires_load_ts_templates=".${CFG_KEY_LOAD_TS_TEMPLATES}//false"
 
+	# Read and validate config
 	if [[ ! -r "${CONFIG_FILEPATH}" ]]; then
 		raise_error "${MESSAGE_CONFIG_UNREADABLE}"
 		return 1
@@ -417,47 +441,120 @@ function load_config() {
 	validate_config "${config_json_content}" || return 1
 
 	# Get static config parameters
-	cfg_projects=( $(echo "${config_json_content}" | jq -r "${JQ_FILTER_PROJECTS_IT} | .${CFG_KEY_NAME}, .${CFG_KEY_SHORT_NAME}") )
-	cfg_project_indices=( $(echo "${config_json_content}" | jq -r ".${CFG_BASE_KEY_PROJECTS} | keys[]") )
-	cfg_project_names=( $(echo "${config_json_content}" | jq -r "${JQ_FILTER_PROJECTS_IT}.${CFG_KEY_NAME}") )
-	cfg_project_short_names=( $(echo "${config_json_content}" | jq -r "${JQ_FILTER_PROJECTS_IT}.${CFG_KEY_SHORT_NAME}") )
-	cfg_project_chars=( $(echo "${config_json_content}" | jq -r "${JQ_FILTER_PROJECTS_IT}.${CFG_KEY_CLI_CHAR}") )
-	cfg_project_types=( $(echo "${config_json_content}" | jq -r "${JQ_FILTER_PROJECTS_IT}.${CFG_KEY_TYPE}") )
-	cfg_project_code_types=( $(echo "${config_json_content}" | jq -r "${JQ_FILTER_PROJECTS_IT} | ${jq_filter_code_types}") )
-	cfg_dependant_project_indices=( $(echo "${config_json_content}" | jq -r ".${CFG_BASE_KEY_PROJECTS} | ${jq_filter_dependent_project_indicies}") )
-	cfg_independant_project_indices=( $(echo "${config_json_content}" | jq -r ".${CFG_BASE_KEY_PROJECTS} | ${jq_filter_independent_project_indicies}") )
-	cfg_env_vars_required=( $(echo "${config_json_content}" | jq -r "${JQ_FILTER_PROJECT_ENV_VARIABLES}[]") )
-	cfg_git_independant_project_indices=( $(echo "${config_json_content}" | jq -r ".${CFG_BASE_KEY_PROJECTS} | ${jq_filter_git_independent_project_indicies}") )
-	cfg_git_dependant_project_indices=( $(echo "${config_json_content}" | jq -r ".${CFG_BASE_KEY_PROJECTS} | ${jq_filter_git_dependent_project_indicies}") )
-	cfg_projects_with_url_env_var_indices=( $(echo "${config_json_content}" | jq -r ".${CFG_BASE_KEY_PROJECTS} | ${jq_filter_projects_with_urls_indicies}") )
-	cfg_project_url_env_var_names=( $(echo "${config_json_content}" | jq -r "${JQ_FILTER_PROJECT_ENV_VARIABLES}.${CFG_ENV_VARIABLE_KEY_URL}") )
+	cfg_projects=(
+		$(echo "${config_json_content}" \
+		| jq -r "${JQ_FILTER_PROJECTS_IT} | .${CFG_KEY_NAME}, .${CFG_KEY_SHORT_NAME}")
+	)
+	cfg_project_indices=(
+		$(echo "${config_json_content}" \
+		| jq -r ".${CFG_BASE_KEY_PROJECTS} | keys[]")
+	)
+	cfg_project_names=(
+		$(echo "${config_json_content}" \
+		| jq -r "${JQ_FILTER_PROJECTS_IT}.${CFG_KEY_NAME}")
+	)
+	cfg_project_short_names=(
+		$(echo "${config_json_content}" \
+		| jq -r "${JQ_FILTER_PROJECTS_IT}.${CFG_KEY_SHORT_NAME}")
+	)
+	cfg_project_chars=(
+		$(echo "${config_json_content}" \
+		| jq -r "${JQ_FILTER_PROJECTS_IT}.${CFG_KEY_CHAR}")
+	)
+	cfg_project_types=(
+		$(echo "${config_json_content}" \
+		| jq -r "${JQ_FILTER_PROJECTS_IT}.${CFG_KEY_TYPE}")
+	)
+	cfg_project_code_types=(
+		$(echo "${config_json_content}" \
+		| jq -r "${JQ_FILTER_PROJECTS_IT} | ${jq_filter_code_types}")
+	)
+	cfg_dependant_project_indices=(
+		$(echo "${config_json_content}" \
+		| jq -r ".${CFG_BASE_KEY_PROJECTS} | ${jq_filter_dependent_project_indicies}")
+	)
+	cfg_independant_project_indices=(
+		$(echo "${config_json_content}" \
+		| jq -r ".${CFG_BASE_KEY_PROJECTS} | ${jq_filter_independent_project_indicies}")
+	)
+	cfg_env_vars_required=(
+		$(echo "${config_json_content}" \
+		| jq -r "${JQ_FILTER_PROJECT_ENV_VARIABLES}[]")
+	)
+	cfg_git_independant_project_indices=(
+		$(echo "${config_json_content}" \
+		| jq -r ".${CFG_BASE_KEY_PROJECTS} | ${jq_filter_git_independent_project_indicies}")
+	)
+	cfg_git_dependant_project_indices=(
+		$(echo "${config_json_content}" \
+		| jq -r ".${CFG_BASE_KEY_PROJECTS} | ${jq_filter_git_dependent_project_indicies}")
+	)
+	cfg_projects_with_url_env_var_indices=(
+		$(echo "${config_json_content}" \
+		| jq -r ".${CFG_BASE_KEY_PROJECTS} | ${jq_filter_projects_with_urls_indicies}")
+	)
+	cfg_project_url_env_var_names=(
+		$(echo "${config_json_content}" \
+		| jq -r "${JQ_FILTER_PROJECT_ENV_VARIABLES}.${CFG_ENV_VARIABLE_KEY_URL}")
+	)
 	# TODO: Implement arbitrary url names
-	cfg_project_url_local=( $(echo "${config_json_content}" | jq -r "${JQ_FILTER_PROJECT_URLS}.${CFG_URL_KEY_LOCAL}") )
-	cfg_project_url_default=( $(echo "${config_json_content}" | jq -r "${JQ_FILTER_PROJECT_URLS}.${CFG_URL_KEY_DEFAULT}") )
-	cfg_project_ports=( $(echo "${config_json_content}" | jq -r "${JQ_FILTER_PROJECTS_IT}.${CFG_KEY_PORT}") )
-	cfg_project_celery_app_names=( $(echo "${config_json_content}" | jq -r "${JQ_FILTER_PROJECTS_IT}.${CFG_KEY_CELERY_APP_NAME}") )
+	cfg_project_url_local=(
+		$(echo "${config_json_content}" \
+		| jq -r "${JQ_FILTER_PROJECT_URLS}.${CFG_URL_KEY_LOCAL}")
+	)
+	cfg_project_url_default=(
+		$(echo "${config_json_content}" \
+		| jq -r "${JQ_FILTER_PROJECT_URLS}.${CFG_URL_KEY_DEFAULT}")
+	)
+	cfg_project_ports=(
+		$(echo "${config_json_content}" \
+		| jq -r "${JQ_FILTER_PROJECTS_IT}.${CFG_KEY_PORT}")
+	)
+	cfg_project_celery_app_names=(
+		$(echo "${config_json_content}" \
+		| jq -r "${JQ_FILTER_PROJECTS_IT}.${CFG_KEY_CELERY_APP_NAME}")
+	)
 	cfg_project_requires_load_termsheet_templates=(
-		$(echo "${config_json_content}" | jq -r "${JQ_FILTER_PROJECTS_IT} | ${jq_filter_project_required_load_ts_templates}")
+		$(echo "${config_json_content}" \
+		| jq -r "${JQ_FILTER_PROJECTS_IT} | ${jq_filter_project_requires_load_ts_templates}")
 	)
 
-	# Get environment variable config parameters
-	cfg_project_dirs=( $(echo "${config_json_content}" | jq -r "${JQ_FILTER_PROJECT_ENV_VARIABLES}.${CFG_ENV_VARIABLE_KEY_ROOT_DIR}") )
-	cfg_project_virtual_env_paths=( $(echo "${config_json_content}" | jq -r "${JQ_FILTER_PROJECT_ENV_VARIABLES}.${CFG_ENV_VARIABLE_KEY_VIRTUALENV_PATH}") )
-	cfg_project_db_names=( $(echo "${config_json_content}" | jq -r "${JQ_FILTER_PROJECT_ENV_VARIABLES}.${CFG_ENV_VARIABLE_KEY_DB_NAME}") )
+	# Get environment variable config parameters which need to be expanded to their values
+	cfg_project_dirs=(
+		$(echo "${config_json_content}" \
+		| jq -r "${JQ_FILTER_PROJECT_ENV_VARIABLES}.${CFG_ENV_VARIABLE_KEY_ROOT_DIR}")
+	)
+	cfg_project_virtualenv_paths=(
+		$(echo "${config_json_content}" \
+		| jq -r "${JQ_FILTER_PROJECT_ENV_VARIABLES}.${CFG_ENV_VARIABLE_KEY_VIRTUALENV_PATH}")
+	)
+	cfg_project_db_names=(
+		$(echo "${config_json_content}" \
+		| jq -r "${JQ_FILTER_PROJECT_ENV_VARIABLES}.${CFG_ENV_VARIABLE_KEY_DB_NAME}")
+	)
 
-	# Expands environment variables into their values
+	# Expands environment variable parameters into their values
 	cfg_project_dirs=( $(expand_env_variable_values "${cfg_project_dirs[@]}") )
-	cfg_project_virtual_env_paths=( $(expand_env_variable_values "${cfg_project_virtual_env_paths[@]}") )
 	cfg_project_db_names=( $(expand_env_variable_values "${cfg_project_db_names[@]}") )
+	cfg_project_virtualenv_paths=(
+		$(expand_env_variable_values "${cfg_project_virtualenv_paths[@]}")
+	)
 
-	# Create global variables to index projects
+	# Create global variables that map to project indices. Used as keys to all project arrays
 	for project_i in "${cfg_project_indices[@]}"; do
-		local project_index_varname="$(get_project_index_varname "${cfg_project_short_names[${project_i}]}")"
-		local project_index_varname_long="$(get_project_index_varname "${cfg_project_names[${project_i}]}")"
-		local project_index_varname_char="$(get_project_index_varname "${cfg_project_chars[${project_i}]}")"
+		local project_index_varname="$( \
+			get_project_index_varname "${cfg_project_short_names[${project_i}]}"
+		)"
+		local project_index_varname_long="$( \
+			get_project_index_varname "${cfg_project_names[${project_i}]}"
+		)"
+		local project_index_varname_char="$( \
+			get_project_index_varname "${cfg_project_chars[${project_i}]}"
+		)"
 
-		# Not ideal but seemingly the only way to declare a global variable in a function when the name
-		# of that variable is stored in another variable. Otherwise I can simply use name=value syntax
+		# Not ideal but seemingly the only way to declare a global variable in a function
+		# in Bash3 when the name of that variable is stored in another variable. Otherwise
+		# you can simply use name=value syntax
 		export ${project_index_varname}="${project_i}"
 		export ${project_index_varname_long}="${project_i}"
 		export ${project_index_varname_char}="${project_i}"
@@ -465,9 +562,12 @@ function load_config() {
 
 	# Pull additional config parameters for any git dependant projects
 	for project_i in "${cfg_git_dependant_project_indices[@]}"; do
-		local tracked_project="$(echo "${config_json_content}" | jq -r ".${CFG_BASE_KEY_PROJECTS}[${project_i}].${CFG_KEY_TRACKS_PROJECT}")"
+		local tracked_project="$( \
+			echo "${config_json_content}" \
+			| jq -r ".${CFG_BASE_KEY_PROJECTS}[${project_i}].${CFG_KEY_TRACKS_PROJECT}" \
+		)"
 		local tracked_project_i="$(get_project_index "${tracked_project}")"
-		cfg_tracked_projects+=( "${tracked_project_i}" )
+		cfg_tracked_project_indices+=( "${tracked_project_i}" )
 		cfg_project_tracked_by["${tracked_project_i}"]="${project_i}"
 	done
 
@@ -479,103 +579,149 @@ function validate_config() {
 	local validation_failed='false'
 
 	local jq_filter_unique_check="length == (unique | length)"
-	local jq_filter_required_key_check="$(create_jq_filter_check_for_array_of_keys "${CFG_PROJECT_REQUIRED_FIELDS[@]}")"
-	local jq_filter_required_env_variable_key_check="$( \
-		create_jq_filter_check_for_array_of_keys "${CFG_PROJECT_REQUIRED_ENV_VARIABLE_FIELDS[@]}" \
+	local jq_filter_required_key_check="$( \
+		create_jq_filter_check_for_array_of_keys "${CFG_PROJECT_REQ_KEYS[@]}"
 	)"
-	local jq_filter_valid_project_type="$(create_jq_filter_check_for_valid_value "${CFG_ALLOWED_PROJECT_TYPES[@]}")"
-	local jq_filter_urls_required_key_check="$(create_jq_filter_check_for_array_of_keys "${CFG_REQUIRED_URLS[@]}")"
+	local jq_filter_required_env_variable_key_check="$( \
+		create_jq_filter_check_for_array_of_keys "${CFG_PROJECT_REQ_ENV_VARIABLES[@]}" \
+	)"
+	local jq_filter_valid_project_type="$( \
+		create_jq_filter_check_for_valid_value "${CFG_ALLOWED_PROJECT_TYPES[@]}" \
+	)"
+
 	local jq_filter_has_urls="has(\"${CFG_KEY_URLS}\")"
+	local jq_filter_urls_required_key_check="$( \
+		create_jq_filter_check_for_array_of_keys "${CFG_REQUIRED_URLS[@]}" \
+	)"
 	local jq_filter_urls_setup_check="
 		(${jq_filter_has_urls} | not) or
-		((${jq_filter_has_urls}) and (.${CFG_KEY_URLS} | ${jq_filter_urls_required_key_check}))"
-	local jq_filter_django_required_key_check="$(create_jq_filter_check_for_array_of_keys "${CFG_DJANGO_REQUIRED_FIELDS[@]}")"
-	local jq_filter_django_env_variable_required_key_check="$(create_jq_filter_check_for_array_of_keys "${CFG_DJANGO_REQUIRED_ENV_VARIABLE_FIELDS[@]}")"
-	local jq_filter_project_setup_check="
-		if .${CFG_KEY_TYPE} == \"${PROJECT_TYPE_DJANGO}\"
-		then ((${jq_filter_django_required_key_check}) and (.${CFG_KEY_ENV_VARIABLES} | ${jq_filter_django_env_variable_required_key_check}))
-		else true end"
+		((${jq_filter_has_urls}) and (.${CFG_KEY_URLS} | ${jq_filter_urls_required_key_check}))
+	"
 
-	# Run validation checks on config and store results
-	local -a cfg_project_indices=( $(echo "${config_json_content}" | jq -r ".${CFG_BASE_KEY_PROJECTS} | keys[]") )
-	local -a cfg_project_names=( $(echo "${config_json_content}" | jq -r "${JQ_FILTER_PROJECTS_IT}.${CFG_KEY_NAME}") )
-	local -a project_names_are_valid=( $(echo "${config_json_content}" | jq -r "${JQ_FILTER_PROJECTS_IT}.${CFG_KEY_NAME} | test(\"${CFG_VALID_NAME_REGEX}\")") )
+	local jq_filter_django_required_key_check="$( \
+		create_jq_filter_check_for_array_of_keys "${CFG_DJANGO_REQ_KEYS[@]}" \
+	)"
+	local jq_filter_django_env_variable_required_key_check="$( \
+		create_jq_filter_check_for_array_of_keys "${CFG_DJANGO_REQ_ENV_VARIABLES[@]}" \
+	)"
+	local jq_filter_project_setup_check="
+		if .${CFG_KEY_TYPE} == \"${PROJECT_TYPE_DJANGO}\" then
+			(
+				(${jq_filter_django_required_key_check}) and
+				(.${CFG_KEY_ENV_VARIABLES} | ${jq_filter_django_env_variable_required_key_check})
+			)
+		else true end
+	"
+
+	# Grab project names and indices from config for error messages
+	local -a cfg_project_indices=(
+		$(echo "${config_json_content}" | jq -r ".${CFG_BASE_KEY_PROJECTS} | keys[]")
+	)
+	local -a cfg_project_names=(
+		$(echo "${config_json_content}" | jq -r "${JQ_FILTER_PROJECTS_IT}.${CFG_KEY_NAME}")
+	)
+
+	# Run validation checks on projects config and store results
+	local -a project_names_are_valid=(
+		$(echo "${config_json_content}" \
+		| jq -r \
+		"${JQ_FILTER_PROJECTS_IT}.${CFG_KEY_NAME} | test(\"${CFG_VALID_PROJECT_NAME_REGEX}\")")
+	)
 	local -a project_short_names_are_valid=(
-		$(echo "${config_json_content}" | jq -r "${JQ_FILTER_PROJECTS_IT}.${CFG_KEY_SHORT_NAME} | test(\"${CFG_VALID_NAME_REGEX}\")")
+		$(echo "${config_json_content}" \
+		| jq -r "${JQ_FILTER_PROJECTS_IT}.${CFG_KEY_SHORT_NAME}
+			| test(\"${CFG_VALID_PROJECT_NAME_REGEX}\")")
 	)
 	local -a project_chars_are_valid=(
-		$(echo "${config_json_content}" | jq -r "${JQ_FILTER_PROJECTS_IT}.${CFG_KEY_CLI_CHAR} | test(\"${CFG_VALID_CHAR_REGEX}\")")
+		$(echo "${config_json_content}" \
+		| jq -r \
+		"${JQ_FILTER_PROJECTS_IT}.${CFG_KEY_CHAR} | test(\"${CFG_VALID_PROJECT_CHAR_REGEX}\")")
 	)
-	local project_short_names_are_unique="$(echo "${config_json_content}" | jq -r "[${JQ_FILTER_PROJECTS_IT}.${CFG_KEY_SHORT_NAME}] | ${jq_filter_unique_check}")"
-	local project_chars_are_unique="$(echo "${config_json_content}" | jq -r "[${JQ_FILTER_PROJECTS_IT}.${CFG_KEY_CLI_CHAR}] | ${jq_filter_unique_check}")"
-	local -a projects_have_required_keys=( $(echo "${config_json_content}" | jq -r "${JQ_FILTER_PROJECTS_IT} | ${jq_filter_required_key_check}") )
-	local -a projects_have_required_env_variable_keys=(
-		$(echo "${config_json_content}" | jq -r "${JQ_FILTER_PROJECT_ENV_VARIABLES} | ${jq_filter_required_env_variable_key_check}")
-	)
-	local -a projects_have_valid_types=( $(echo "${config_json_content}" | jq -r "${JQ_FILTER_PROJECTS_IT}.${CFG_KEY_TYPE} | ${jq_filter_valid_project_type}") )
-	local -a projects_have_valid_type_setup=( $(echo "${config_json_content}" | jq -r "${JQ_FILTER_PROJECTS_IT} | ${jq_filter_project_setup_check}") )
-	local -a projects_have_valid_url_setup=( $(echo "${config_json_content}" | jq -r "${JQ_FILTER_PROJECTS_IT} | ${jq_filter_urls_setup_check}") )
 
-	# Check for failed validation and inform user of failure
+	local project_short_names_are_unique="$( \
+		echo "${config_json_content}" \
+		| jq -r "[${JQ_FILTER_PROJECTS_IT}.${CFG_KEY_SHORT_NAME}] | ${jq_filter_unique_check}" \
+	)"
+	local project_chars_are_unique="$( \
+		echo "${config_json_content}" \
+		| jq -r "[${JQ_FILTER_PROJECTS_IT}.${CFG_KEY_CHAR}] | ${jq_filter_unique_check}" \
+	)"
+
+	local -a projects_have_required_keys=(
+		$(echo "${config_json_content}" \
+		| jq -r "${JQ_FILTER_PROJECTS_IT} | ${jq_filter_required_key_check}")
+	)
+	local -a projects_have_required_env_variable_keys=(
+		$(echo "${config_json_content}" \
+		| jq -r "${JQ_FILTER_PROJECT_ENV_VARIABLES} | ${jq_filter_required_env_variable_key_check}")
+	)
+	local -a projects_have_valid_types=(
+		$(echo "${config_json_content}" \
+		| jq -r "${JQ_FILTER_PROJECTS_IT}.${CFG_KEY_TYPE} | ${jq_filter_valid_project_type}")
+	)
+	local -a projects_have_valid_type_setup=(
+		$(echo "${config_json_content}" \
+		| jq -r "${JQ_FILTER_PROJECTS_IT} | ${jq_filter_project_setup_check}")
+	)
+	local -a projects_have_valid_url_setup=(
+		$(echo "${config_json_content}" \
+		| jq -r "${JQ_FILTER_PROJECTS_IT} | ${jq_filter_urls_setup_check}")
+	)
+
+	# Check for failed validation and print errors where required
+	# TODO: Find a neater way to choose error messages with less code!
 	if [[ "${project_short_names_are_unique}" == 'false' ]]; then
 		validation_failed='true'
-		raise_error "Project short names in config must be unique"
+		raise_error "${MESSAGE_CFG_NON_UNIQUE_SHORT_NAMES}"
 	fi
 
 	if [[ "${project_chars_are_unique}" == 'false' ]]; then
 		validation_failed='true'
-		raise_error "Project cli chars in config must be unique"
+		raise_error "${MESSAGE_CFG_NON_UNIQUE_CHARS}"
 	fi
 
 	for project_i in "${!cfg_project_indices[@]}"; do
+		local project_name="Project ${project_i} '${cfg_project_names[${project_i}]}'"
+
 		if [[ "${project_names_are_valid[${project_i}]}" == 'false' ]]; then
 			validation_failed='true'
-			raise_error \
-			"Project ${project_i} '${cfg_project_names[${project_i}]}' has an invalid name: Only characters, digits and _ are allowed"
+			raise_error "${project_name} ${MESSAGE_CFG_INVALID_NAME}"
 		fi
 
 		if [[ "${project_short_names_are_valid[${project_i}]}" == 'false' ]]; then
 			validation_failed='true'
-			raise_error \
-			"Project ${project_i} '${cfg_project_names[${project_i}]}' has an invalid short name: Only characters, digits and _ are allowed"
+			raise_error "${project_name} ${MESSAGE_CFG_INVALID_SHORT_NAME}"
 		fi
 
 		if [[ "${project_chars_are_valid[${project_i}]}" == 'false' ]]; then
 			validation_failed='true'
-			raise_error \
-			"Project ${project_i} '${cfg_project_names[${project_i}]}' has an invalid cli char: Only characters and digits are allowed"
+			raise_error "${project_name} ${MESSAGE_CFG_INVALID_CHAR}"
 		fi
 
 		if [[ "${projects_have_required_keys[${project_i}]}" == 'false' ]]; then
 			validation_failed='true'
-			raise_error \
-			"Project ${project_i} '${cfg_project_names[${project_i}]}' config requires following keys: ${CFG_PROJECT_REQUIRED_FIELDS[*]}"
+			raise_error "${project_name} ${MESSAGE_CFG_KEYS_MISSING}"
 		fi
 
 		if [[ "${projects_have_required_env_variable_keys[${project_i}]}" == 'false' ]]; then
 			validation_failed='true'
-			raise_error \
-			"Project ${project_i} '${cfg_project_names[${project_i}]}' config requires following env variables: ${CFG_PROJECT_REQUIRED_ENV_VARIABLE_FIELDS[*]}"
+			raise_error "${project_name} ${MESSAGE_CFG_ENVV_MISSING}"
 		fi
 
 		if [[ "${projects_have_valid_types[${project_i}]}" == 'false' ]]; then
 			validation_failed='true'
-			raise_error \
-			"Project ${project_i} '${cfg_project_names[${project_i}]}' is not one of the supported types: ${CFG_ALLOWED_PROJECT_TYPES[*]}"
+			raise_error "${project_name} ${MESSAGE_CFG_INVALID_TYPE}"
 		fi
 
 		if [[ "${projects_have_valid_type_setup[${project_i}]}" == 'false' ]]; then
 			validation_failed='true'
-			raise_error \
-			"Project ${project_i} '${cfg_project_names[${project_i}]}' config requires following django keys: ${CFG_DJANGO_REQUIRED_FIELDS[*]}"
-			raise_error \
-			"Project ${project_i} '${cfg_project_names[${project_i}]}' config requires following django env variables: ${CFG_DJANGO_REQUIRED_ENV_VARIABLE_FIELDS[*]}"
+			raise_error "${project_name} ${MESSAGE_CFG_INVALID_DJANGO_KEY_SETUP}"
+			raise_error "${project_name} ${MESSAGE_CFG_INVALID_DJANGO_ENVV_SETUP}"
 		fi
 
 		if [[ "${projects_have_valid_url_setup[${project_i}]}" == 'false' ]]; then
 			validation_failed='true'
-			raise_error \
-			"Project ${project_i} '${cfg_project_names[${project_i}]}' config requires following urls: ${CFG_REQUIRED_URLS[*]}"
+			raise_error "${project_name} ${MESSAGE_CFG_INVALID_URL_SETUP}"
 		fi
 	done
 
@@ -589,7 +735,6 @@ function validate_config() {
 
 ######## BASE TASK FUNCTIONS ########
 
-
 function print_task_title() {
 	local title="$1"
 
@@ -598,8 +743,6 @@ function print_task_title() {
 	else
 		printf "${PRINT_STYLE_TASK_TITLE_QUIET}" "${title}" || return 1
 	fi
-
-	return 0
 }
 
 function task_success() {
@@ -608,8 +751,6 @@ function task_success() {
 	else
 		printf "${PRINT_STYLE_SUCCESS}" "DONE" || return 1
 	fi
-
-	return 0
 }
 
 function task_failure() {
@@ -618,7 +759,42 @@ function task_failure() {
 	else
 		printf "${PRINT_STYLE_FAILURE}" "FAILED" || return 1
 	fi
+}
 
+function change_dir() {
+	local dir_name="$1"
+
+	print_task_title "Changing directory to '${dir_name}'"
+	cd "${dir_name}" || { task_failure; return 1; }
+
+	task_success
+	return 0
+}
+
+function checkout_git_branch() {
+	local branch_name="$1"
+
+	print_task_title "Checking out branch '${branch_name}'"
+
+	if [[ "${verbose_mode}" == 'true' ]]; then
+		git fetch --all || { task_failure; return 1; }
+		git checkout "${branch_name}" || { task_failure; return 1; }
+		git pull --ff-only || {
+			printf "${PRINT_STYLE_ERROR}" "${MESSAGE_GIT_PULL_FAILED}"
+			task_failure
+			return 1
+		}
+	else
+		git fetch --all &>/dev/null || { task_failure; return 1; }
+		git checkout "${branch_name}" &>/dev/null || { task_failure; return 1; }
+		git pull --ff-only &>/dev/null || {
+			task_failure
+			printf "${PRINT_STYLE_ERROR}" "${MESSAGE_GIT_PULL_FAILED}"
+			return 1
+		}
+	fi
+
+	task_success
 	return 0
 }
 
@@ -627,10 +803,11 @@ function activate_code_env() {
 	local env_path="$2"
 	local run_install="$3"
 
-	local title="Loading ${code_type} environment '${env_path##*/}'$(\
-		[[ "${run_install}" != 'true' ]] || echo ' (with package install)')"
+	local title="Loading ${code_type} environment '${env_path##*/}'$( \
+		[[ "${run_install}" != 'true' ]] || echo ' (with package install)' \
+	)"
 
-	print_task_title "${title}" || return 1
+	print_task_title "${title}"
 
 	source "${env_path}/bin/activate" || { task_failure; return 1; }
 
@@ -659,40 +836,25 @@ function activate_code_env() {
 	return 0
 }
 
-function change_dir() {
-	local dir_name="$1"
+function goto_project() {
+	local project="$1"
+	local run_install="$2"
+	local branch="$3"
 
-	print_task_title "Changing directory to '${dir_name}'" || return 1
-	cd "${dir_name}" || { task_failure; return 1; }
+	local -i project_i="$(get_project_index "${project}")"
+	local project_dir="${cfg_project_dirs[${project_i}]}"
+	local project_code_type="${cfg_project_code_types[${project_i}]}"
+	local project_virtualenv_path="${cfg_project_virtualenv_paths[${project_i}]}"
 
-	task_success
-	return 0
-}
+	change_dir "${project_dir}" || return 1
 
-function checkout_git_branch() {
-	local branch_name="$1"
-
-	print_task_title "Checking out branch '${branch_name}'" || return 1
-
-	if [[ "${verbose_mode}" == 'true' ]]; then
-		git fetch --all || { task_failure; return 1; }
-		git checkout "${branch_name}" || { task_failure; return 1; }
-		git pull --ff-only || {
-			printf "${PRINT_STYLE_ERROR}" "${MESSAGE_GIT_PULL_FAILED}"
-			task_failure
-			return 1
-		}
-	else
-		git fetch --all &>/dev/null || { task_failure; return 1; }
-		git checkout "${branch_name}" &>/dev/null || { task_failure; return 1; }
-		git pull --ff-only &>/dev/null || {
-			task_failure
-			printf "${PRINT_STYLE_ERROR}" "${MESSAGE_GIT_PULL_FAILED}"
-			return 1
-		}
+	if [[ -n "${branch}" ]]; then
+		checkout_git_branch "${branch}" || return 1
 	fi
 
-	task_success
+	activate_code_env "${project_code_type}" "${project_virtualenv_path}" "${run_install}" \
+		|| return 1
+
 	return 0
 }
 
@@ -708,8 +870,10 @@ function has_file_changes_between_branches_based_on_pattern() {
 
 	local -i project_i="$(get_project_index "${project}")"
 	local project_dir="${cfg_project_dirs[${project_i}]}"
-	local git_output="$(git --no-pager -C "${project_dir}" diff --name-only \
-		"${branch_from}..${remote_branch_to}" "${file_pattern_to_find}")"
+	local git_output="$( \
+		git --no-pager -C "${project_dir}" diff --name-only \
+		"${branch_from}..${remote_branch_to}" "${file_pattern_to_find}" \
+	)"
 
 	if [[ -z "${git_output}" ]]; then
 		printf "${PRINT_STYLE_OUTPUT_NO_NEW_LINE}" 'false'
@@ -721,9 +885,9 @@ function has_file_changes_between_branches_based_on_pattern() {
 }
 
 function run_command() {
-	print_task_title "Running command '$*'" || return 1
+	print_task_title "Running command '$*'"
 
-	# Unlike most tasks, we want the output of this command
+	# Unlike most tasks, we want the output of this command, even in non-verbose mode
 	printf "${PRINT_STYLE_LINE_BREAK}"
 	$@ || { task_failure; return 1; }
 
@@ -735,13 +899,13 @@ function create_clean_db() {
 	local db_name="$1"
 	local clean_db_name="${db_name}_${CLEAN_DB_SUFFIX}"
 
-	print_task_title "Creating clean copy of database '${db_name}' as '${clean_db_name}'" \
-		|| return 1
+	print_task_title "Creating clean copy of database '${db_name}' as '${clean_db_name}'"
 
 	# Create clean copy of database, overwriting it if it already exists
 	local base_db_exists="$(psql -tAc "SELECT 1 FROM pg_database WHERE datname = '${db_name}'")"
 	local clean_db_exists="$(psql -tAc \
-		"SELECT 1 FROM pg_database WHERE datname = '${clean_db_name}'")"
+		"SELECT 1 FROM pg_database WHERE datname = '${clean_db_name}'" \
+	)"
 
 	if [[ "${base_db_exists}" != "1" ]]; then
 		task_failure
@@ -774,11 +938,12 @@ function restore_from_clean_db() {
 	local delete_clean_db="$2"
 	local clean_db_name="${db_name}_${CLEAN_DB_SUFFIX}"
 
-	print_task_title "Restoring database '${db_name}' from '${clean_db_name}'" || return 1
+	print_task_title "Restoring database '${db_name}' from '${clean_db_name}'"
 
 	local base_db_exists="$(psql -tAc "SELECT 1 FROM pg_database WHERE datname = '${db_name}'")"
 	local clean_db_exists="$(psql -tAc \
-		"SELECT 1 FROM pg_database WHERE datname = '${clean_db_name}'")"
+		"SELECT 1 FROM pg_database WHERE datname = '${clean_db_name}'" \
+	)"
 
 	if [[ "${clean_db_exists}" != '1' ]]; then
 		task_failure
@@ -786,30 +951,29 @@ function restore_from_clean_db() {
 		return 1
 	fi
 
-	# Stop processes connected to db quickly
-	if [[ "${verbose_mode}" == 'true' ]]; then
-		psql -c "
-			SELECT pg_terminate_backend(pg_stat_activity.pid)
-			FROM pg_stat_activity
-			WHERE pg_stat_activity.datname = '${db_name}'
-			AND pid <> pg_backend_pid();
-		" || { task_failure; return 1; }
-	else
-		psql -c "
-			SELECT pg_terminate_backend(pg_stat_activity.pid)
-			FROM pg_stat_activity
-			WHERE pg_stat_activity.datname = '${db_name}'
-			AND pid <> pg_backend_pid();
-		" &>/dev/null || { task_failure; return 1; }
-	fi
-
-	# Drop altered db
 	if [[ "${base_db_exists}" == '1'  ]]; then
+
+		# Stop processes connected to db quickly and drop the db
 		if [[ "${verbose_mode}" == 'true' ]]; then
+			psql -c "
+				SELECT pg_terminate_backend(pg_stat_activity.pid)
+				FROM pg_stat_activity
+				WHERE pg_stat_activity.datname = '${db_name}'
+				AND pid <> pg_backend_pid();
+			" || { task_failure; return 1; }
 			psql -c "DROP DATABASE \"${db_name}\";" || { task_failure; return 1; }
+
 		else
+			psql -c "
+				SELECT pg_terminate_backend(pg_stat_activity.pid)
+				FROM pg_stat_activity
+				WHERE pg_stat_activity.datname = '${db_name}'
+				AND pid <> pg_backend_pid();
+			" &>/dev/null || { task_failure; return 1; }
+
 			psql -c "DROP DATABASE \"${db_name}\";" &>/dev/null || { task_failure; return 1; }
 		fi
+
 	fi
 
 	# Restore clean database to old name
@@ -825,8 +989,7 @@ function restore_from_clean_db() {
 
 	# Drop clean db if flag is set
 	if [ "${delete_clean_db}" == 'true' ]; then
-		print_task_title "Deleting clean database '${clean_db_name}' after successful restore" \
-			|| return 1
+		print_task_title "Deleting clean database '${clean_db_name}' after successful restore"
 
 		if [[ "${verbose_mode}" == 'true' ]]; then
 			psql -c "DROP DATABASE \"${clean_db_name}\";" || { task_failure; return 1; }
@@ -854,6 +1017,27 @@ function django_migrate_db() {
 	return 0
 }
 
+function django_start_server() {
+	local port="$1"
+	printf "${PRINT_STYLE_TASK_TITLE}" "Starting django server on port '${port}'"
+	python manage.py runserver "${port}"
+}
+
+function django_start_celery() {
+	local app_name="$1"
+	local priority="$2"
+
+	printf "${PRINT_STYLE_TASK_TITLE}" "Starting '${app_name}' celery worker $( \
+		[[ -z "${priority}" ]] || echo "(${priority})" \
+	)"
+
+	if [[ -n "${priority}" ]]; then
+		celery -A "${app_name}" worker -Q "${priority}"
+	else
+		celery -A "${app_name}" worker
+	fi
+}
+
 function load_termsheet_templates() {
 	print_task_title 'Loading termsheet templates'
 
@@ -868,51 +1052,9 @@ function load_termsheet_templates() {
 	return 0
 }
 
-function django_start_server() {
-	local port="$1"
-	printf "${PRINT_STYLE_TASK_TITLE}" "Starting django server on port '${port}'"
-	python manage.py runserver "${port}"
-}
-
-function django_start_celery() {
-	local app_name="$1"
-	local priority="$2"
-
-	printf "${PRINT_STYLE_TASK_TITLE}" "Starting '${app_name}' celery worker $(
-		[[ -z "${priority}" ]] || echo "(${priority})")"
-
-	if [[ -n "${priority}" ]]; then
-		celery -A "${app_name}" worker -Q "${priority}"
-	else
-		celery -A "${app_name}" worker
-	fi
-}
-
 function npm_run_watch() {
 	printf "${PRINT_STYLE_TASK_TITLE}" 'Starting npm watch'
-	npm run watch
-}
-
-function goto_project() {
-	local project="$1"
-	local run_install="$2"
-	local branch="$3"
-
-	local -i project_i="$(get_project_index "${project}")"
-	local project_dir="${cfg_project_dirs[${project_i}]}"
-	local project_code_type="${cfg_project_code_types[${project_i}]}"
-	local project_virtualenv_path="${cfg_project_virtual_env_paths[${project_i}]}"
-
-	change_dir "${project_dir}" || return 1
-
-	if [[ -n "${branch}" ]]; then
-		checkout_git_branch "${branch}" || return 1
-	fi
-
-	activate_code_env "${project_code_type}" "${project_virtualenv_path}" "${run_install}" \
-		|| return 1
-
-	return 0
+	npm run watch || return 1
 }
 
 function setup_project_branch() {
@@ -949,7 +1091,7 @@ function run_django_start_server() {
 	local project="$1"
 	local port="$2"
 	goto_project "${project}" 'false' || return 1
-	django_start_server "${port}"
+	django_start_server "${port}" || return 1
 }
 
 function run_django_start_celery() {
@@ -957,13 +1099,13 @@ function run_django_start_celery() {
 	local app_name="$2"
 	local priority="$3"
 	goto_project "${project}" 'false' || return 1
-	django_start_celery "${app_name}" "${priority}"
+	django_start_celery "${app_name}" "${priority}" || return 1
 }
 
 function run_npm_run_watch() {
 	local project="$1"
 	goto_project "${project}" 'false' || return 1
-	npm_run_watch
+	npm_run_watch || return 1
 }
 
 
@@ -976,6 +1118,16 @@ function create_tmux_session() {
 
 	tmux new-session -d -s "${session_name}" -n "${TMUX_WINDOW_NAME_DEFAULT}" \
 		|| { task_failure; return 1; }
+
+	task_success
+	return 0
+}
+
+function kill_tmux_session() {
+	local session_name="$1"
+	print_task_title "Killing tmux session '${session_name}'"
+
+	tmux kill-session -t "${session}" || { task_failure; return 1; }
 
 	task_success
 	return 0
@@ -995,22 +1147,17 @@ function get_tmux_session_name_regex() {
 	printf "${PRINT_STYLE_OUTPUT_NO_NEW_LINE}" "${session_name_regex}"
 }
 
-function run_command_with_tmux_unlock() {
-	local tmux_lock_channel="$1"
-	shift
-	$@ && tmux wait-for -U "${tmux_lock_channel}"
-}
-
 function get_running_tmux_session_with_regex() {
 	local session_name_regex="$1"
 	local tmux_sessions=( $(tmux list-sessions -F "#{session_name}") )
 	local matched_session_running='false'
 	local -i num_of_matched_sessions=0
 
-	for sesh in "${tmux_sessions[@]}"; do
-		if [[ "${sesh}" =~ ${session_name_regex} ]]; then
+	for session in "${tmux_sessions[@]}"; do
+		if [[ "${session}" =~ ${session_name_regex} ]]; then
 			local matched_session_running='true'
 			(( num_of_matched_sessions++ ))
+
 			if (( num_of_matched_sessions > 1 )); then
 				raise_error "${MESSAGE_MULTIPLE_RUNNING_TMUX_SESSIONS} ${num_of_matched_sessions}"
 			fi
@@ -1029,12 +1176,45 @@ function get_running_tmux_session_with_regex() {
 	fi
 }
 
+function create_tmux_window() {
+	local window_name="$1"
+	local window_target="$2"
+	local start_dir="$3"
+
+	if [[ -n "${start_dir}" ]]; then
+		tmux new-window -da -c "${start_dir}" -t "${window_target}" -n "${window_name}" || return 1
+	else
+		tmux new-window -da -t "${window_target}" -n "${window_name}" || return 1
+	fi
+
+	return 0
+}
+
+function split_tmux_window() {
+	local window_target="$1"
+	local start_dir="$2"
+
+	if [[ -n "${start_dir}" ]]; then
+		tmux split-window -c "${start_dir}" -t "${window_target}" || return 1
+	else
+		tmux split-window -t "${window_target}" || return 1
+	fi
+
+	return 0
+}
+
+function kill_tmux_window() {
+	local window_target="$1"
+	tmux kill-window -t "${window_target}" || return 1
+	return 0
+}
+
 function create_tmux_worker_window() {
 	local tmux_session_name="$1"
 	local tmux_windows=( $(tmux list-windows -t "${tmux_session_name}" -F "#{window_name}") )
 
 	if ! is_in_array "${TMUX_WINDOW_NAME_WORKER}" "${tmux_windows[@]}"; then
-		tmux new-window -dk -t "${tmux_session_name}:0" -n "${TMUX_WINDOW_NAME_WORKER}" || return 1
+		create_tmux_window "${TMUX_WINDOW_NAME_WORKER}" "${tmux_session_name}:0" || return 1
 	fi
 
 	return 0
@@ -1045,161 +1225,182 @@ function delete_tmux_worker_window() {
 	local tmux_windows=( $(tmux list-windows -t "${tmux_session_name}" -F "#{window_name}") )
 
 	if is_in_array "${TMUX_WINDOW_NAME_WORKER}" "${tmux_windows[@]}"; then
-		tmux kill-window -t "${tmux_session_name}:${TMUX_WINDOW_NAME_WORKER}" || return 1
+		kill_tmux_window "${tmux_session_name}:${TMUX_WINDOW_NAME_WORKER}" || return 1
 	fi
 
 	return 0
 }
 
-function update_tmux_windows_for_project() {
+function lock_tmux() {
+	tmux wait-for -L "${TMUX_DEFAULT_LOCK_CHANNEL}" || return 1
+}
+
+function unlock_tmux() {
+	tmux wait-for -U "${TMUX_DEFAULT_LOCK_CHANNEL}" || return 1
+}
+
+function run_command_with_tmux_unlock() {
+	$@ && unlock_tmux || return 1
+}
+
+function create_tmux_windows_for_project() {
 	local tmux_session_name="$1"
 	local project="$2"
-	local update_type="$3"
 
 	local -i project_i="$(get_project_index "${project}")"
 	local project_dir="${cfg_project_dirs[${project_i}]}"
 	local project_type="${cfg_project_types[${project_i}]}"
+	local end="${tmux_session_name}:{end}"
 	local tmux_windows=( $(tmux list-windows -t "${tmux_session_name}" -F "#{window_name}") )
-
-	if [[ "${update_type}" == "${TMUX_UPDATE_TYPE_SET_ENV_VAR}" && ( -z "$4" || -z "$5" ) ]]; then
-		raise_error "Environment variables cannot be added as they are not set"
-		return 1
-	else
-		local env_var_key="$4"
-		local env_var_value="$5"
-	fi
 
 	case "${project_type}" in
 		"${PROJECT_TYPE_DJANGO}")
-			local win_name_django="${project}${TMUX_WIN_NAME_DJANGO_SUFFIX}"
-			local win_name_celery="${project}${TMUX_WIN_NAME_CELERY_SUFFIX}"
+			local win_django="${project}${TMUX_WIN_NAME_DJANGO_SUFFIX}"
+			local win_celery="${project}${TMUX_WIN_NAME_CELERY_SUFFIX}"
+			local target_win_django="${tmux_session_name}:${win_django}"
+			local target_win_celery="${tmux_session_name}:${win_celery}"
 			local project_celery_app_name="${cfg_project_celery_app_names[${project_i}]}"
 
-			case "${update_type}" in
-				"${TMUX_UPDATE_TYPE_CREATE}")
-					# Creates the windows necessary for the project
-					if ! is_in_array "${win_name_django}" "${tmux_windows[@]}"; then
-						tmux new-window -da -c "${project_dir}" -t "${tmux_session_name}:{end}" -n "${win_name_django}" || return 1
-					fi
+			if ! is_in_array "${win_django}" "${tmux_windows[@]}"; then
+				create_tmux_window "${win_django}" "${end}" "${project_dir}" || return 1
+			fi
 
-					if [[ "${project_celery_app_name}" != 'null' ]]; then
-						if ! is_in_array "${win_name_celery}" "${tmux_windows[@]}"; then
-							tmux new-window -da -c "${project_dir}" -t "${tmux_session_name}:{end}" -n "${win_name_celery}" || return 1
-							tmux split-window -c "${project_dir}" -t "${tmux_session_name}:${win_name_celery}" || return 1
-						fi
-					fi
-					;;
-
-				"${TMUX_UPDATE_TYPE_DELETE}")
-					# Deletes the windows for the project
-					if is_in_array "${win_name_django}" "${tmux_windows[@]}"; then
-						tmux kill-window -t "${tmux_session_name}:${win_name_django}" || return 1
-					fi
-
-					if [[ "${project_celery_app_name}" != 'null' ]]; then
-						if is_in_array "${win_name_celery}" "${tmux_windows[@]}"; then
-							tmux kill-window -t "${tmux_session_name}:${win_name_celery}" || return 1
-						fi
-					fi
-					;;
-
-				"${TMUX_UPDATE_TYPE_KILL_SIG}")
-					# Sends a kill signal to all active windows - useful before setting environment variables
-					tmux send-keys -t "${tmux_session_name}:${win_name_django}" 'C-c' || return 1
-					if [[ "${project_celery_app_name}" != 'null' ]]; then
-						tmux send-keys -t "${tmux_session_name}:${win_name_celery}.0" 'C-c' || return 1
-						tmux send-keys -t "${tmux_session_name}:${win_name_celery}.1" 'C-c' || return 1
-					fi
-					;;
-
-				"${TMUX_UPDATE_TYPE_SET_ENV_VAR}")
-					# Sets environment variables in the windows of a project
-					tmux send-keys -t "${tmux_session_name}:${win_name_django}" "export ${env_var_key}=${env_var_value}" 'C-m' || return 1
-
-					if [[ "${project_celery_app_name}" != 'null' ]]; then
-						tmux send-keys -t "${tmux_session_name}:${win_name_celery}.0" \
-							"export ${env_var_key}=${env_var_value}" 'C-m' || return 1
-
-						tmux send-keys -t "${tmux_session_name}:${win_name_celery}.1" \
-							"export ${env_var_key}=${env_var_value}" 'C-m' || return 1
-					fi
-
-					# Always send environment variables to the worker to ensure it can run scripts properly
-					tmux send-keys -t "${tmux_session_name}:${TMUX_WINDOW_NAME_WORKER}" \
-						"export ${env_var_key}=${env_var_value}" 'C-m' || return 1
-					;;
-			esac
+			if [[ "${project_celery_app_name}" != 'null' ]]
+				&& ! is_in_array "${win_celery}" "${tmux_windows[@]}"; then
+				create_tmux_window "${win_celery}" "${end}" "${project_dir}" || return 1
+				split_tmux_window "${target_win_celery}" "${project_dir}" || return 1
+			fi
 			;;
 
 		"${PROJECT_TYPE_NODE}")
-			local win_name_npm_watch="${project}${TMUX_WIN_NAME_NPM_WATCH_SUFFIX}"
+			local win_npm_w="${project}${TMUX_WIN_NAME_NPM_WATCH_SUFFIX}"
+			local target_win_npm_w="${tmux_session_name}:${win_npm_w}"
 
-			case "${update_type}" in
-				"${TMUX_UPDATE_TYPE_CREATE}")
-					# Creates the windows necessary for the project
-					if ! is_in_array "${win_name_npm_watch}" "${tmux_windows[@]}"; then
-						tmux new-window -da -c "${project_dir}" -t "${tmux_session_name}:{end}" -n "${win_name_npm_watch}" || return 1
-					fi
-					;;
-
-				"${TMUX_UPDATE_TYPE_DELETE}")
-					# Deletes the windows for the project
-					if is_in_array "${win_name_npm_watch}" "${tmux_windows[@]}"; then
-						tmux kill-window -t "${tmux_session_name}:${win_name_npm_watch}" || return 1
-					fi
-					;;
-
-				"${TMUX_UPDATE_TYPE_KILL_SIG}")
-					# Sends a kill signal to all active windows - useful before setting environment variables
-					tmux send-keys -t "${tmux_session_name}:${win_name_npm_watch}" 'C-c' || return 1
-					;;
-
-				"${TMUX_UPDATE_TYPE_SET_ENV_VAR}")
-					# Sets environment variables in the windows of a project
-					tmux send-keys -t "${tmux_session_name}:${win_name_npm_watch}" "export ${env_var_key}=${env_var_value}" 'C-m' || return 1
-
-					# Always send environment variables to the worker to ensure it can run scripts properly
-					tmux send-keys -t "${tmux_session_name}:${TMUX_WINDOW_NAME_WORKER}" \
-						"export ${env_var_key}=${env_var_value}" 'C-m' || return 1
-					;;
-			esac
+			if ! is_in_array "${win_npm_w}" "${tmux_windows[@]}"; then
+				create_tmux_window "${win_npm_w}" "${end}" "${project_dir}" || return 1
+			fi
 			;;
 	esac
 
 	return 0
 }
 
-function create_tmux_windows_for_project() {
-	local tmux_session_name="$1"
-	local project="$2"
-	local update_type="${TMUX_UPDATE_TYPE_CREATE}"
-	update_tmux_windows_for_project "${tmux_session_name}" "${project}" "${update_type}"
-}
-
 function delete_tmux_windows_for_project() {
 	local tmux_session_name="$1"
 	local project="$2"
-	local update_type="${TMUX_UPDATE_TYPE_DELETE}"
-	update_tmux_windows_for_project "${tmux_session_name}" "${project}" "${update_type}"
+
+	local -i project_i="$(get_project_index "${project}")"
+	local project_type="${cfg_project_types[${project_i}]}"
+	local tmux_windows=( $(tmux list-windows -t "${tmux_session_name}" -F "#{window_name}") )
+
+	case "${project_type}" in
+		"${PROJECT_TYPE_DJANGO}")
+			local win_django="${project}${TMUX_WIN_NAME_DJANGO_SUFFIX}"
+			local win_celery="${project}${TMUX_WIN_NAME_CELERY_SUFFIX}"
+			local target_win_django="${tmux_session_name}:${win_django}"
+			local target_win_celery="${tmux_session_name}:${win_celery}"
+			local project_celery_app_name="${cfg_project_celery_app_names[${project_i}]}"
+
+			if is_in_array "${win_django}" "${tmux_windows[@]}"; then
+				kill_tmux_window "${target_win_django}" || return 1
+			fi
+
+			if [[ "${project_celery_app_name}" != 'null' ]]
+				&& is_in_array "${win_celery}" "${tmux_windows[@]}"; then
+				kill_tmux_window "${target_win_celery}" || return 1
+			fi
+			;;
+
+		"${PROJECT_TYPE_NODE}")
+			local win_npm_w="${project}${TMUX_WIN_NAME_NPM_WATCH_SUFFIX}"
+			local target_win_npm_w="${tmux_session_name}:${win_npm_w}"
+
+			if is_in_array "${win_npm_w}" "${tmux_windows[@]}"; then
+				kill_tmux_window "${target_win_npm_w}" || return 1
+			fi
+			;;
+	esac
+
+	return 0
 }
 
 function stop_tmux_windows_for_project() {
+	# Sends stop signal to tmux windows. Useful before setting environment variables
 	local tmux_session_name="$1"
 	local project="$2"
-	local update_type="${TMUX_UPDATE_TYPE_KILL_SIG}"
-	update_tmux_windows_for_project "${tmux_session_name}" "${project}" "${update_type}"
+
+	local -i project_i="$(get_project_index "${project}")"
+	local project_type="${cfg_project_types[${project_i}]}"
+
+	case "${project_type}" in
+		"${PROJECT_TYPE_DJANGO}")
+			local win_django="${project}${TMUX_WIN_NAME_DJANGO_SUFFIX}"
+			local win_celery="${project}${TMUX_WIN_NAME_CELERY_SUFFIX}"
+			local target_win_django="${tmux_session_name}:${win_django}"
+			local target_win_celery="${tmux_session_name}:${win_celery}"
+			local project_celery_app_name="${cfg_project_celery_app_names[${project_i}]}"
+
+			tmux send-keys -t "${target_win_django}" 'C-c' || return 1
+
+			if [[ "${project_celery_app_name}" != 'null' ]]; then
+				tmux send-keys -t "${target_win_celery}.0" 'C-c' || return 1
+				tmux send-keys -t "${target_win_celery}.1" 'C-c' || return 1
+			fi
+			;;
+
+		"${PROJECT_TYPE_NODE}")
+			local win_npm_w="${project}${TMUX_WIN_NAME_NPM_WATCH_SUFFIX}"
+			local target_win_npm_w="${tmux_session_name}:${win_npm_w}"
+			tmux send-keys -t "${target_win_npm_w}" 'C-c' || return 1
+			;;
+	esac
+
+	return 0
 }
 
 function load_env_var_in_tmux_windows_for_project() {
+	# Sets environment variables in all project windows and the worker
+	# window which is shared across differe projects
 	local tmux_session_name="$1"
 	local project="$2"
 	local env_var_key="$3"
 	local env_var_value="$4"
-	local update_type="${TMUX_UPDATE_TYPE_SET_ENV_VAR}"
-	update_tmux_windows_for_project "${tmux_session_name}" "${project}" "${update_type}" "${env_var_key}" "${env_var_value}"
+
+	local -i project_i="$(get_project_index "${project}")"
+	local project_type="${cfg_project_types[${project_i}]}"
+	local target_win_worker="${tmux_session_name}:${TMUX_WINDOW_NAME_WORKER}"
+	local env_var_set_cmd="export ${env_var_key}=${env_var_value} C-m"
+
+	case "${project_type}" in
+		"${PROJECT_TYPE_DJANGO}")
+			local win_django="${project}${TMUX_WIN_NAME_DJANGO_SUFFIX}"
+			local win_celery="${project}${TMUX_WIN_NAME_CELERY_SUFFIX}"
+			local target_win_django="${tmux_session_name}:${win_django}"
+			local target_win_celery="${tmux_session_name}:${win_celery}"
+			local project_celery_app_name="${cfg_project_celery_app_names[${project_i}]}"
+
+			tmux send-keys -t "${target_win_django}" "${env_var_set_cmd}" || return 1
+			tmux send-keys -t "${target_win_worker}" "${env_var_set_cmd}" || return 1
+
+			if [[ "${project_celery_app_name}" != 'null' ]]; then
+				tmux send-keys -t "${target_win_celery}.0" "${env_var_set_cmd}" || return 1
+				tmux send-keys -t "${target_win_celery}.1" "${env_var_set_cmd}" || return 1
+			fi
+			;;
+
+		"${PROJECT_TYPE_NODE}")
+			local win_npm_w="${project}${TMUX_WIN_NAME_NPM_WATCH_SUFFIX}"
+			local target_win_npm_w="${tmux_session_name}:${win_npm_w}"
+
+			tmux send-keys -t "${target_win_npm_w}" "${env_var_set_cmd}" || return 1
+			tmux send-keys -t "${target_win_worker}" "${env_var_set_cmd}" || return 1
+			;;
+	esac
+
+	return 0
 }
 
-function refresh_tmux_windows_for_project() {
+function reload_tmux_windows_for_project() {
 	local tmux_session_name="$1"
 	local project="$2"
 	local branch_from="$3"
@@ -1207,31 +1408,41 @@ function refresh_tmux_windows_for_project() {
 	local force_reload="$5"
 
 	local -i project_i="$(get_project_index "${project}")"
-	local project_dir="${cfg_project_dirs[${project_i}]}"
 	local project_type="${cfg_project_types[${project_i}]}"
-	local script_head="${SCRIPT_NAME}$([[ "${verbose_mode}" == 'false' ]] || echo ' -v')"
+	local target_win_worker="${tmux_session_name}:${TMUX_WINDOW_NAME_WORKER}"
+	local verbose_flag="$([[ "${verbose_mode}" == 'false' ]] || echo ' -v')"
+	local run_cmd="${SCRIPT_NAME}${verbose_flag} ${COMMAND_SCIPT_RUN}"
+	local run_cmd_w_unlock="${run_cmd} run_command_with_tmux_unlock"
 
 	case "${project_type}" in
 		"${PROJECT_TYPE_DJANGO}")
-			# If there is a currently running session, check what the most effecient way to update is.
-			# Otherwise update everything
+			local win_django="${project}${TMUX_WIN_NAME_DJANGO_SUFFIX}"
+			local win_celery="${project}${TMUX_WIN_NAME_CELERY_SUFFIX}"
+			local target_win_django="${tmux_session_name}:${win_django}"
+			local target_win_celery="${tmux_session_name}:${win_celery}"
+			local project_celery_app_name="${cfg_project_celery_app_names[${project_i}]}"
+			local project_port="${cfg_project_ports[${project_i}]}"
+
+			# If there is a currently running session, check for the most effecient way to reload
 			if [[ -n "${branch_from}" ]]; then
-				local run_install="$(has_file_changes_between_branches_based_on_pattern "${project}" "${branch_from}" \
-					"${branch_to}" "${FILE_PATTERN_PY_REQUIRMENTS}" )"
-				local run_migrations="$(has_file_changes_between_branches_based_on_pattern "${project}" "${branch_from}" \
-					"${branch_to}" "${FILE_PATTERN_DJANGO_MIGRATIONS}" )"
-				local load_ts_templates="$(has_file_changes_between_branches_based_on_pattern "${project}" "${branch_from}" \
-					"${branch_to}" "${FILE_PATTERN_TS_TEMPLATES}" )"
+				local run_install="$( \
+					has_file_changes_between_branches_based_on_pattern "${project}" \
+					"${branch_from}" "${branch_to}" "${FILE_PATTERN_PY_REQUIRMENTS}" \
+				)"
+				local run_migrations="$( \
+					has_file_changes_between_branches_based_on_pattern "${project}" \
+					"${branch_from}" "${branch_to}" "${FILE_PATTERN_DJANGO_MIGRATIONS}" \
+				)"
+				local load_ts_templates="$( \
+					has_file_changes_between_branches_based_on_pattern "${project}" \
+					"${branch_from}" "${branch_to}" "${FILE_PATTERN_TS_TEMPLATES}" \
+				)"
+
 			else
 				local run_install='true'
 				local run_migrations='true'
 				local load_ts_templates='true'
 			fi
-
-			local win_name_django="${project}${TMUX_WIN_NAME_DJANGO_SUFFIX}"
-			local win_name_celery="${project}${TMUX_WIN_NAME_CELERY_SUFFIX}"
-			local project_celery_app_name="${cfg_project_celery_app_names[${project_i}]}"
-			local project_port="${cfg_project_ports[${project_i}]}"
 
 			if [[ "${verbose_mode}" == 'true' ]]; then
 				printf "${PRINT_STYLE_OUTPUT}" "Run package install = ${run_install}"
@@ -1241,50 +1452,54 @@ function refresh_tmux_windows_for_project() {
 
 			if [[ "${project_celery_app_name}" != 'null' && -n "${branch_from}" ]]; then
 				# Celery needs to be restarted for any change in code, database or packages
-				tmux send-keys -t "${tmux_session_name}:${win_name_celery}.0" "C-c" "C-l" || return 1
-				tmux send-keys -t "${tmux_session_name}:${win_name_celery}.1" "C-c" "C-l" || return 1
+				tmux send-keys -t "${target_win_celery}.0" "C-c" "C-l" || return 1
+				tmux send-keys -t "${target_win_celery}.1" "C-c" "C-l" || return 1
 			fi
 
-			if [[ ( "${run_install}" == 'true' || "${force_reload}" == 'true' ) && -n "${branch_from}" ]]; then
+			if [[ ( "${run_install}" == 'true' || "${force_reload}" == 'true' ) \
+				&& -n "${branch_from}" ]]; then
 				# The django server only needs restarting for changes in packages
-				tmux send-keys -t "${tmux_session_name}:${win_name_django}" "C-c" "C-l" || return 1
+				tmux send-keys -t "${target_win_django}" "C-c" "C-l" || return 1
 			fi
 
-			# Setups the new branch in the most effecient way possible, blocking further execution till it succeeds
-			tmux wait-for -L "${TMUX_DEFAULT_LOCK_CHANNEL}" || return 1
-			tmux send-keys -t "${tmux_session_name}:${TMUX_WINDOW_NAME_WORKER}" \
-				"${script_head} ${COMMAND_SCIPT_RUN} run_command_with_tmux_unlock ${TMUX_DEFAULT_LOCK_CHANNEL} " \
-				"setup_project_branch ${project} ${run_install} ${branch_to} ${run_migrations} ${load_ts_templates}" "C-m" || return 1
-			tmux wait-for -L "${TMUX_DEFAULT_LOCK_CHANNEL}"
+			# Sets up the new branch in the most effecient way, locking tmux until it succeeds
+			lock_tmux || return 1
+			tmux send-keys -t "${target_win_worker}" "${run_cmd_w_unlock} setup_project_branch " \
+				"${project} ${run_install} ${branch_to} ${run_migrations} ${load_ts_templates}" \
+				"C-m" || return 1
+			lock_tmux || return 1
 
 			if [[ "${project_celery_app_name}" != 'null' ]]; then
 				# Start up celery once branch is loaded
-				tmux send-keys -t "${tmux_session_name}:${win_name_celery}.0" \
-					"${script_head} ${COMMAND_SCIPT_RUN} run_django_start_celery ${project} ${project_celery_app_name} high_priority" "C-m" || return 1
-				tmux send-keys -t "${tmux_session_name}:${win_name_celery}.1" \
-					"${script_head} ${COMMAND_SCIPT_RUN} run_django_start_celery ${project} ${project_celery_app_name}" "C-m" || return 1
+				tmux send-keys -t "${target_win_celery}.0" "${run_cmd} run_django_start_celery " \
+					"${project} ${project_celery_app_name} high_priority" "C-m" || return 1
+				tmux send-keys -t "${target_win_celery}.1" "${run_cmd} run_django_start_celery " \
+					"${project} ${project_celery_app_name}" "C-m" || return 1
 			fi
 
 			if [[ "${run_install}" == 'true' || "${force_reload}" == 'true' ]]; then
 				# Start up django server if new packages were installed or if window was just opened
-				tmux send-keys -t "${tmux_session_name}:${win_name_django}" \
-					"${script_head} ${COMMAND_SCIPT_RUN} run_django_start_server ${project} ${project_port}" "C-m" || return 1
+				tmux send-keys -t "${target_win_django}" "${run_cmd} run_django_start_server " \
+					"${project} ${project_port}" "C-m" || return 1
 			fi
 
-			tmux wait-for -U "${TMUX_DEFAULT_LOCK_CHANNEL}" || return 1
+			unlock_tmux || return 1
 			;;
 
 		"${PROJECT_TYPE_NODE}")
-			# If there is a currently running session, check what the most effecient way to update is.
-			# Otherwise update everything
+			local win_npm_w="${project}${TMUX_WIN_NAME_NPM_WATCH_SUFFIX}"
+			local target_win_npm_w="${tmux_session_name}:${win_npm_w}"
+
+			# If there is a currently running session, check for the most effecient way to reload
 			if [[ -n "${branch_from}" ]]; then
-				local run_install="$(has_file_changes_between_branches_based_on_pattern "${project}" "${branch_from}" \
-					"${branch_to}" "${FILE_PATTERN_NODE_REQUIREMENTS}" )"
+				local run_install="$( \
+					has_file_changes_between_branches_based_on_pattern "${project}" \
+					"${branch_from}" "${branch_to}" "${FILE_PATTERN_NODE_REQUIREMENTS}" \
+				)"
 			else
 				local run_install='true'
 			fi
 
-			local win_name_npm_watch="${project}${TMUX_WIN_NAME_NPM_WATCH_SUFFIX}"
 
 			if [[ "${verbose_mode}" == 'true' ]]; then
 				printf "${PRINT_STYLE_OUTPUT}" "Run package install = ${run_install}"
@@ -1293,24 +1508,23 @@ function refresh_tmux_windows_for_project() {
 			if [[ "${run_install}" == 'true' || "${force_reload}" == 'true' ]]; then
 				# If node requirements have changed, npm watch needs to be restarted
 				if [[ -n "${branch_from}" ]]; then
-					tmux send-keys -t "${tmux_session_name}:${win_name_npm_watch}" "C-c" "C-l" || return 1
+					tmux send-keys -t "${target_win_npm_w}" "C-c" "C-l" || return 1
 				fi
 
 				# Setups the new branch in the most effecient way possible, blocking further execution till it succeeds
-				tmux wait-for -L "${TMUX_DEFAULT_LOCK_CHANNEL}" || return 1
-				tmux send-keys -t "${tmux_session_name}:${TMUX_WINDOW_NAME_WORKER}" \
-					"${script_head} ${COMMAND_SCIPT_RUN} run_command_with_tmux_unlock ${TMUX_DEFAULT_LOCK_CHANNEL} " \
+				lock_tmux || return 1
+				tmux send-keys -t "${target_win_worker}" "${run_cmd_w_unlock} " \
 					"setup_project_branch ${project} ${run_install} ${branch_to}" "C-m" || return 1
 
-				tmux wait-for -L "${TMUX_DEFAULT_LOCK_CHANNEL}" || return 1
-				tmux send-keys -t "${tmux_session_name}:${win_name_npm_watch}" \
-					"${script_head} ${COMMAND_SCIPT_RUN} run_npm_run_watch ${project}" "C-m" || return 1
-				tmux wait-for -U "${TMUX_DEFAULT_LOCK_CHANNEL}" || return 1
+				lock_tmux || return 1
+				tmux send-keys -t "${target_win_npm_w}" "${run_cmd} run_npm_run_watch ${project}" \
+					"C-m" || return 1
+				unlock_tmux || return 1
 
 			else
 				# No need to restart the npm watch if there are no changes in the node requirements
-				tmux send-keys -t "${tmux_session_name}:${TMUX_WINDOW_NAME_WORKER}" \
-					"${script_head} ${COMMAND_SCIPT_RUN} setup_project_branch ${project} ${run_install} ${branch_to}" "C-m" || return 1
+				tmux send-keys -t "${target_win_worker}" "${run_cmd} setup_project_branch " \
+					"${project} ${run_install} ${branch_to}" "C-m" || return 1
 			fi
 			;;
 	esac
@@ -1380,7 +1594,7 @@ function build() {
 
 					# This is for projects in the same git repository as another project and
 					# therefore track its branch
-					if is_in_array "${project_i}" "${cfg_tracked_projects[@]}"; then
+					if is_in_array "${project_i}" "${cfg_tracked_project_indices[@]}"; then
 						local tracking_project_i="${cfg_project_tracked_by[${project_i}]}"
 						project_branches_to[${tracking_project_i}]="${project_branches_to[${project_i}]}"
 					fi
@@ -1429,14 +1643,14 @@ function build() {
 			local match="${tmux_session_rematch[$i]}"
 			local -i after_match_index=$((i + 1))
 
-			if is_valid_build_command_project "${match}"; then
+			if is_valid_project_for_build_command "${match}"; then
 				local project="${match}"
 				local -i project_i="$(get_project_index "${project}")"
 				project_branches_from[${project_i}]="${tmux_session_rematch[${after_match_index}]}"
 
 				# This is for projects in the same git repository as another project and therefore
 				# track its branch
-				if is_in_array "${project_i}" "${cfg_tracked_projects[@]}"; then
+				if is_in_array "${project_i}" "${cfg_tracked_project_indices[@]}"; then
 					local tracking_project_i="${cfg_project_tracked_by[${project_i}]}"
 					project_branches_from[${tracking_project_i}]="${project_branches_from[${project_i}]}"
 				fi
@@ -1457,8 +1671,7 @@ function build() {
 
 		# TODO: Add functionality for other named urls from config
 		if [[ -n "${branch_to}" ]]; then
-			print_task_title "Building project '${project_short_name}' to branch '${branch_to}'" \
-				|| return 1
+			print_task_title "Building project '${project_short_name}' to branch '${branch_to}'"
 
 			if [[ "${verbose_mode}" == 'true' ]]; then
 				printf "${PRINT_STYLE_OUTPUT}" "Branch from = ${branch_from:-none}"
@@ -1468,7 +1681,7 @@ function build() {
 			create_tmux_windows_for_project "${tmux_sesh_name_new}" "${project_short_name}" \
 				|| { task_failure; return 1; }
 
-			refresh_tmux_windows_for_project "${tmux_sesh_name_new}" "${project_short_name}" \
+			reload_tmux_windows_for_project "${tmux_sesh_name_new}" "${project_short_name}" \
 				"${branch_from}" "${branch_to}" 'false' || { task_failure; return 1; }
 
 			if is_in_array "${project_i}" "${cfg_projects_with_url_env_var_indices[@]}"; then
@@ -1496,8 +1709,7 @@ function build() {
 		local branch_to="${project_branches_to[${project_i}]}"
 
 		if [[ -n "${branch_to}" ]]; then
-			print_task_title "Building project '${project_short_name}' to branch '${branch_to}'" \
-				|| return 1
+			print_task_title "Building project '${project_short_name}' to branch '${branch_to}'"
 
 			if [[ "${verbose_mode}" == 'true' ]]; then
 				printf "${PRINT_STYLE_OUTPUT}" "Branch from = ${branch_from:-none}"
@@ -1526,7 +1738,7 @@ function build() {
 					|| { task_failure; return 1; }
 			done
 
-			refresh_tmux_windows_for_project "${tmux_sesh_name_new}" "${project_short_name}" \
+			reload_tmux_windows_for_project "${tmux_sesh_name_new}" "${project_short_name}" \
 				"${branch_from}" "${branch_to}" 'true' || { task_failure; return 1; }
 
 			task_success
@@ -1731,16 +1943,16 @@ function reset() {
 
 	for session in "${tmux_sessions[@]}"; do
 		if [[ "${session}" =~ ${tmux_session_name_regex} ]]; then
-			tmux kill-session -t "${session}"
+			kill_tmux_session "${session}"
 		fi
 	done
 
 	# This unlocks any locked channels. It's run twice with a sleep to ensure that
 	# unlocking the channel the first time doesn't trigger code that relocks the
 	# channel. This can lead to complications the next time the tool is run
-	tmux wait-for -U "${TMUX_DEFAULT_LOCK_CHANNEL}" &>/dev/null
+	unlock_tmux &>/dev/null
 	sleep 1
-	tmux wait-for -U "${TMUX_DEFAULT_LOCK_CHANNEL}" &>/dev/null
+	unlock_tmux &>/dev/null
 }
 
 function script_run() {

@@ -3,7 +3,7 @@
 		{
 			"name": "bankangle",
 			"shortName": "ba",
-			"cliChar": "b",
+			"char": "b",
 			"type": "django",
 			"dependant": true,
 			"port": 8000,
@@ -18,7 +18,7 @@
 		{
 			"name": "bankangle_node",
 			"shortName": "ba_node",
-			"cliChar": "n",
+			"char": "n",
 			"type": "node",
 			"dependant": false,
 			"tracksProject": "bankangle",
@@ -30,7 +30,7 @@
 		{
 			"name": "om_elements",
 			"shortName": "om",
-			"cliChar": "o",
+			"char": "o",
 			"type": "node",
 			"dependant": false,
 			"urls": {
@@ -49,7 +49,7 @@
 		{
 			"name": "kodiak",
 			"shortName": "kod",
-			"cliChar": "k",
+			"char": "k",
 			"type": "django",
 			"dependant": false,
 			"port": 8002,
