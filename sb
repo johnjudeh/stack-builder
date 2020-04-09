@@ -1500,7 +1500,6 @@ function reload_tmux_windows_for_project() {
 				local run_install='true'
 			fi
 
-
 			if [[ "${verbose_mode}" == 'true' ]]; then
 				printf "${PRINT_STYLE_OUTPUT}" "Run package install = ${run_install}"
 			fi
