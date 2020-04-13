@@ -1253,6 +1253,28 @@ function run_command_with_tmux_unlock() {
 	$@ && unlock_tmux || return 1
 }
 
+readonly -a DJANGO_TMUX_WIN_SUFFIXES=(
+	"${TMUX_WIN_NAME_DJANGO_SUFFIX}"
+	"${TMUX_WIN_NAME_CELERY_SUFFIX}"
+)
+readonly -a DJANGO_TMUX_WIN_SPLIT=(
+	'false'
+	'true'
+)
+readonly -a DJANGO_TMUX_WIN_DEPENDS_ON_CELERY=(
+	'false'
+	'true'
+)
+readonly -a NODE_TMUX_WIN_SUFFIXES=(
+	"${TMUX_WIN_NAME_NPM_WATCH_SUFFIX}"
+)
+readonly -a NODE_TMUX_WIN_SPLIT=(
+	'false'
+)
+readonly -a NODE_TMUX_WIN_DEPENDS_ON_CELERY=(
+	'false'
+)
+
 function create_tmux_windows_for_project() {
 	local tmux_session_name="$1"
 	local project="$2"
@@ -1260,37 +1282,41 @@ function create_tmux_windows_for_project() {
 	local -i project_i="$(get_project_index "${project}")"
 	local project_dir="${cfg_project_dirs[${project_i}]}"
 	local project_type="${cfg_project_types[${project_i}]}"
+	local project_celery_app_name="${cfg_project_celery_app_names[${project_i}]}"
 	local end="${tmux_session_name}:{end}"
 	local tmux_windows=( $(tmux list-windows -t "${tmux_session_name}" -F "#{window_name}") )
 
 	case "${project_type}" in
 		"${PROJECT_TYPE_DJANGO}")
-			local win_django="${project}${TMUX_WIN_NAME_DJANGO_SUFFIX}"
-			local win_celery="${project}${TMUX_WIN_NAME_CELERY_SUFFIX}"
-			local target_win_django="${tmux_session_name}:${win_django}"
-			local target_win_celery="${tmux_session_name}:${win_celery}"
-			local project_celery_app_name="${cfg_project_celery_app_names[${project_i}]}"
-
-			if ! is_in_array "${win_django}" "${tmux_windows[@]}"; then
-				create_tmux_window "${win_django}" "${end}" "${project_dir}" || return 1
-			fi
-
-			if [[ "${project_celery_app_name}" != 'null' ]] \
-				&& ! is_in_array "${win_celery}" "${tmux_windows[@]}"; then
-				create_tmux_window "${win_celery}" "${end}" "${project_dir}" || return 1
-				split_tmux_window "${target_win_celery}" "${project_dir}" || return 1
-			fi
+			local tmux_win_suffixes=( "${DJANGO_TMUX_WIN_SUFFIXES[@]}" )
+			local tmux_win_split=( "${DJANGO_TMUX_WIN_SPLIT[@]}" )
+			local tmux_win_depends_on_celery=( "${DJANGO_TMUX_WIN_DEPENDS_ON_CELERY[@]}" )
 			;;
 
 		"${PROJECT_TYPE_NODE}")
-			local win_npm_w="${project}${TMUX_WIN_NAME_NPM_WATCH_SUFFIX}"
-			local target_win_npm_w="${tmux_session_name}:${win_npm_w}"
-
-			if ! is_in_array "${win_npm_w}" "${tmux_windows[@]}"; then
-				create_tmux_window "${win_npm_w}" "${end}" "${project_dir}" || return 1
-			fi
+			local tmux_win_suffixes=( "${NODE_TMUX_WIN_SUFFIXES[@]}" )
+			local tmux_win_split=( "${NODE_TMUX_WIN_SPLIT[@]}" )
+			local tmux_win_depends_on_celery=( "${NODE_TMUX_WIN_DEPENDS_ON_CELERY[@]}" )
 			;;
 	esac
+
+	for tmux_win_i in "${!tmux_win_suffixes[@]}"; do
+		local win_name="${project}${tmux_win_suffixes[${tmux_win_i}]}"
+		local target_win="${tmux_session_name}:${win_name}"
+		local depends_on_cel="${tmux_win_depends_on_celery[${tmux_win_i}]}"
+		local split_win="${tmux_win_split[${tmux_win_i}]}"
+
+		if ! is_in_array "${win_name}" "${tmux_windows[@]}" \
+			&& [[ "${depends_on_cel}" == 'false' \
+			|| ( "${depends_on_cel}" == 'true' && "${project_celery_app_name}" != 'null' ) ]]; then
+
+			create_tmux_window "${win_name}" "${end}" "${project_dir}" || return 1
+
+			if [[ "${split_win}" == 'true' ]]; then
+				split_tmux_window "${target_win}" "${project_dir}" || return 1
+			fi
+		fi
+	done
 
 	return 0
 }
@@ -1305,31 +1331,25 @@ function delete_tmux_windows_for_project() {
 
 	case "${project_type}" in
 		"${PROJECT_TYPE_DJANGO}")
-			local win_django="${project}${TMUX_WIN_NAME_DJANGO_SUFFIX}"
-			local win_celery="${project}${TMUX_WIN_NAME_CELERY_SUFFIX}"
-			local target_win_django="${tmux_session_name}:${win_django}"
-			local target_win_celery="${tmux_session_name}:${win_celery}"
-			local project_celery_app_name="${cfg_project_celery_app_names[${project_i}]}"
-
-			if is_in_array "${win_django}" "${tmux_windows[@]}"; then
-				kill_tmux_window "${target_win_django}" || return 1
-			fi
-
-			if [[ "${project_celery_app_name}" != 'null' ]] \
-				&& is_in_array "${win_celery}" "${tmux_windows[@]}"; then
-				kill_tmux_window "${target_win_celery}" || return 1
-			fi
+			local tmux_win_suffixes=( "${DJANGO_TMUX_WIN_SUFFIXES[@]}" )
+			local tmux_win_depends_on_celery=( "${DJANGO_TMUX_WIN_DEPENDS_ON_CELERY[@]}" )
 			;;
 
 		"${PROJECT_TYPE_NODE}")
-			local win_npm_w="${project}${TMUX_WIN_NAME_NPM_WATCH_SUFFIX}"
-			local target_win_npm_w="${tmux_session_name}:${win_npm_w}"
-
-			if is_in_array "${win_npm_w}" "${tmux_windows[@]}"; then
-				kill_tmux_window "${target_win_npm_w}" || return 1
-			fi
+			local tmux_win_suffixes=( "${NODE_TMUX_WIN_SUFFIXES[@]}" )
+			local tmux_win_depends_on_celery=( "${NODE_TMUX_WIN_DEPENDS_ON_CELERY[@]}" )
 			;;
 	esac
+
+	for tmux_win_i in "${!tmux_win_suffixes[@]}"; do
+		local win_name="${project}${tmux_win_suffixes[${tmux_win_i}]}"
+		local target_win="${tmux_session_name}:${win_name}"
+		local depends_on_cel="${tmux_win_depends_on_celery[${tmux_win_i}]}"
+
+		if is_in_array "${win_name}" "${tmux_windows[@]}"; then
+			kill_tmux_window "${target_win}" || return 1
+		fi
+	done
 
 	return 0
 }
@@ -1341,29 +1361,37 @@ function stop_tmux_windows_for_project() {
 
 	local -i project_i="$(get_project_index "${project}")"
 	local project_type="${cfg_project_types[${project_i}]}"
+	local tmux_windows=( $(tmux list-windows -t "${tmux_session_name}" -F "#{window_name}") )
 
 	case "${project_type}" in
 		"${PROJECT_TYPE_DJANGO}")
-			local win_django="${project}${TMUX_WIN_NAME_DJANGO_SUFFIX}"
-			local win_celery="${project}${TMUX_WIN_NAME_CELERY_SUFFIX}"
-			local target_win_django="${tmux_session_name}:${win_django}"
-			local target_win_celery="${tmux_session_name}:${win_celery}"
-			local project_celery_app_name="${cfg_project_celery_app_names[${project_i}]}"
-
-			tmux send-keys -t "${target_win_django}" 'C-c' || return 1
-
-			if [[ "${project_celery_app_name}" != 'null' ]]; then
-				tmux send-keys -t "${target_win_celery}.0" 'C-c' || return 1
-				tmux send-keys -t "${target_win_celery}.1" 'C-c' || return 1
-			fi
+			local tmux_win_suffixes=( "${DJANGO_TMUX_WIN_SUFFIXES[@]}" )
+			local tmux_win_split=( "${DJANGO_TMUX_WIN_SPLIT[@]}" )
+			local tmux_win_depends_on_celery=( "${DJANGO_TMUX_WIN_DEPENDS_ON_CELERY[@]}" )
 			;;
 
 		"${PROJECT_TYPE_NODE}")
-			local win_npm_w="${project}${TMUX_WIN_NAME_NPM_WATCH_SUFFIX}"
-			local target_win_npm_w="${tmux_session_name}:${win_npm_w}"
-			tmux send-keys -t "${target_win_npm_w}" 'C-c' || return 1
+			local tmux_win_suffixes=( "${NODE_TMUX_WIN_SUFFIXES[@]}" )
+			local tmux_win_split=( "${NODE_TMUX_WIN_SPLIT[@]}" )
+			local tmux_win_depends_on_celery=( "${NODE_TMUX_WIN_DEPENDS_ON_CELERY[@]}" )
 			;;
 	esac
+
+	for tmux_win_i in "${!tmux_win_suffixes[@]}"; do
+		local win_name="${project}${tmux_win_suffixes[${tmux_win_i}]}"
+		local target_win="${tmux_session_name}:${win_name}"
+		local depends_on_cel="${tmux_win_depends_on_celery[${tmux_win_i}]}"
+		local split_win="${tmux_win_split[${tmux_win_i}]}"
+
+		if is_in_array "${win_name}" "${tmux_windows[@]}"; then
+			if [[ "${split_win}" == 'true' ]]; then
+				tmux send-keys -t "${target_win}.0" 'C-c' || return 1
+				tmux send-keys -t "${target_win}.1" 'C-c' || return 1
+			else
+				tmux send-keys -t "${target_win}" 'C-c' || return 1
+			fi
+		fi
+	done
 
 	return 0
 }
@@ -1380,32 +1408,39 @@ function load_env_var_in_tmux_windows_for_project() {
 	local project_type="${cfg_project_types[${project_i}]}"
 	local target_win_worker="${tmux_session_name}:${TMUX_WINDOW_NAME_WORKER}"
 	local env_var_set_cmd="export ${env_var_key}=${env_var_value}"
+	local tmux_windows=( $(tmux list-windows -t "${tmux_session_name}" -F "#{window_name}") )
 
 	case "${project_type}" in
 		"${PROJECT_TYPE_DJANGO}")
-			local win_django="${project}${TMUX_WIN_NAME_DJANGO_SUFFIX}"
-			local win_celery="${project}${TMUX_WIN_NAME_CELERY_SUFFIX}"
-			local target_win_django="${tmux_session_name}:${win_django}"
-			local target_win_celery="${tmux_session_name}:${win_celery}"
-			local project_celery_app_name="${cfg_project_celery_app_names[${project_i}]}"
-
-			tmux send-keys -t "${target_win_django}" "${env_var_set_cmd}" 'C-m' || return 1
-			tmux send-keys -t "${target_win_worker}" "${env_var_set_cmd}" 'C-m' || return 1
-
-			if [[ "${project_celery_app_name}" != 'null' ]]; then
-				tmux send-keys -t "${target_win_celery}.0" "${env_var_set_cmd}" 'C-m' || return 1
-				tmux send-keys -t "${target_win_celery}.1" "${env_var_set_cmd}" 'C-m' || return 1
-			fi
+			local tmux_win_suffixes=( "${DJANGO_TMUX_WIN_SUFFIXES[@]}" )
+			local tmux_win_split=( "${DJANGO_TMUX_WIN_SPLIT[@]}" )
+			local tmux_win_depends_on_celery=( "${DJANGO_TMUX_WIN_DEPENDS_ON_CELERY[@]}" )
 			;;
 
 		"${PROJECT_TYPE_NODE}")
-			local win_npm_w="${project}${TMUX_WIN_NAME_NPM_WATCH_SUFFIX}"
-			local target_win_npm_w="${tmux_session_name}:${win_npm_w}"
-
-			tmux send-keys -t "${target_win_npm_w}" "${env_var_set_cmd}" 'C-m' || return 1
-			tmux send-keys -t "${target_win_worker}" "${env_var_set_cmd}" 'C-m' || return 1
+			local tmux_win_suffixes=( "${NODE_TMUX_WIN_SUFFIXES[@]}" )
+			local tmux_win_split=( "${NODE_TMUX_WIN_SPLIT[@]}" )
+			local tmux_win_depends_on_celery=( "${NODE_TMUX_WIN_DEPENDS_ON_CELERY[@]}" )
 			;;
 	esac
+
+	for tmux_win_i in "${!tmux_win_suffixes[@]}"; do
+		local win_name="${project}${tmux_win_suffixes[${tmux_win_i}]}"
+		local target_win="${tmux_session_name}:${win_name}"
+		local depends_on_cel="${tmux_win_depends_on_celery[${tmux_win_i}]}"
+		local split_win="${tmux_win_split[${tmux_win_i}]}"
+
+		if is_in_array "${win_name}" "${tmux_windows[@]}"; then
+			if [[ "${split_win}" == 'true' ]]; then
+				tmux send-keys -t "${target_win}.0" "${env_var_set_cmd}" 'C-m' || return 1
+				tmux send-keys -t "${target_win}.1" "${env_var_set_cmd}" 'C-m' || return 1
+			else
+				tmux send-keys -t "${target_win}" "${env_var_set_cmd}" 'C-m' || return 1
+			fi
+		fi
+	done
+
+	tmux send-keys -t "${target_win_worker}" "${env_var_set_cmd}" 'C-m' || return 1
 
 	return 0
 }
