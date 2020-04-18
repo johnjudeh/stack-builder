@@ -47,6 +47,11 @@ readonly CODE_TYPE_NODE='node'
 readonly PROJECT_TYPE_DJANGO='django'
 readonly PROJECT_TYPE_NODE='node'
 
+readonly VALID_CELERY_PRIORITIES=(
+	"" # Explicitly blank, aka normal priority
+	"high_priority"
+)
+
 readonly COMMAND_BUILD='build'
 readonly COMMAND_FREEZE='freeze'
 readonly COMMAND_RESTORE='restore'
@@ -215,6 +220,35 @@ readonly TMUX_UPDATE_TYPE_CREATE='create'
 readonly TMUX_UPDATE_TYPE_DELETE='delete'
 readonly TMUX_UPDATE_TYPE_STOP='stop'
 readonly TMUX_UPDATE_TYPE_SET_ENV_VAR='setenvv'
+
+readonly -a DJANGO_TMUX_WIN_SUFFIXES=(
+	"${TMUX_WIN_NAME_DJANGO_SUFFIX}"
+	"${TMUX_WIN_NAME_CELERY_SUFFIX}"
+)
+readonly -a DJANGO_TMUX_WIN_SPLIT=(
+	'false'
+	'true'
+)
+readonly -a DJANGO_TMUX_WIN_DEPENDS_ON_CELERY=(
+	'false'
+	'true'
+)
+readonly -a DJANGO_TMUX_WIN_COMMANDS=(
+	"run_django_start_server"
+	"run_django_start_celery"
+)
+readonly -a NODE_TMUX_WIN_SUFFIXES=(
+	"${TMUX_WIN_NAME_NPM_WATCH_SUFFIX}"
+)
+readonly -a NODE_TMUX_WIN_SPLIT=(
+	'false'
+)
+readonly -a NODE_TMUX_WIN_DEPENDS_ON_CELERY=(
+	'false'
+)
+readonly -a NODE_TMUX_WIN_COMMANDS=(
+	"run_npm_run_watch"
+)
 
 readonly FILE_PATTERN_PY_REQUIRMENTS='*requirements*'
 readonly FILE_PATTERN_NODE_REQUIREMENTS='*package.json*'
@@ -1026,7 +1060,9 @@ function django_start_server() {
 
 function django_start_celery() {
 	local app_name="$1"
-	local priority="$2"
+	local -i priority_i="$2"
+
+	local priority="${VALID_CELERY_PRIORITIES[${priority_i}]}"
 
 	printf "${PRINT_STYLE_TASK_TITLE}" "Starting '${app_name}' celery worker $( \
 		[[ -z "${priority}" ]] || echo "(${priority})" \
@@ -1090,17 +1126,24 @@ function setup_project_branch() {
 
 function run_django_start_server() {
 	local project="$1"
-	local port="$2"
+
+	local -i project_i="$(get_project_index "${project}")"
+	local project_celery_app_name="${cfg_project_celery_app_names[${project_i}]}"
+	local project_port="${cfg_project_ports[${project_i}]}"
+
 	goto_project "${project}" 'false' || return 1
-	django_start_server "${port}" || return 1
+	django_start_server "${project_port}" || return 1
 }
 
 function run_django_start_celery() {
 	local project="$1"
-	local app_name="$2"
-	local priority="$3"
+	local -i priority_i="$2"
+
+	local -i project_i="$(get_project_index "${project}")"
+	local project_celery_app_name="${cfg_project_celery_app_names[${project_i}]}"
+
 	goto_project "${project}" 'false' || return 1
-	django_start_celery "${app_name}" "${priority}" || return 1
+	django_start_celery "${project_celery_app_name}" "${priority_i}" || return 1
 }
 
 function run_npm_run_watch() {
@@ -1252,28 +1295,6 @@ function unlock_tmux() {
 function run_command_with_tmux_unlock() {
 	$@ && unlock_tmux || return 1
 }
-
-readonly -a DJANGO_TMUX_WIN_SUFFIXES=(
-	"${TMUX_WIN_NAME_DJANGO_SUFFIX}"
-	"${TMUX_WIN_NAME_CELERY_SUFFIX}"
-)
-readonly -a DJANGO_TMUX_WIN_SPLIT=(
-	'false'
-	'true'
-)
-readonly -a DJANGO_TMUX_WIN_DEPENDS_ON_CELERY=(
-	'false'
-	'true'
-)
-readonly -a NODE_TMUX_WIN_SUFFIXES=(
-	"${TMUX_WIN_NAME_NPM_WATCH_SUFFIX}"
-)
-readonly -a NODE_TMUX_WIN_SPLIT=(
-	'false'
-)
-readonly -a NODE_TMUX_WIN_DEPENDS_ON_CELERY=(
-	'false'
-)
 
 function create_tmux_windows_for_project() {
 	local tmux_session_name="$1"
@@ -1458,120 +1479,137 @@ function reload_tmux_windows_for_project() {
 	local verbose_flag="$([[ "${verbose_mode}" == 'false' ]] || echo ' -v')"
 	local run_cmd="${SCRIPT_NAME}${verbose_flag} ${COMMAND_SCIPT_RUN}"
 	local run_cmd_w_unlock="${run_cmd} run_command_with_tmux_unlock"
+	local tmux_windows=( $(tmux list-windows -t "${tmux_session_name}" -F "#{window_name}") )
+	local hard_reload='false'
+	local -a db_args
 
 	case "${project_type}" in
 		"${PROJECT_TYPE_DJANGO}")
-			local win_django="${project}${TMUX_WIN_NAME_DJANGO_SUFFIX}"
-			local win_celery="${project}${TMUX_WIN_NAME_CELERY_SUFFIX}"
-			local target_win_django="${tmux_session_name}:${win_django}"
-			local target_win_celery="${tmux_session_name}:${win_celery}"
-			local project_celery_app_name="${cfg_project_celery_app_names[${project_i}]}"
-			local project_port="${cfg_project_ports[${project_i}]}"
-
-			# If there is a currently running session, check for the most effecient way to reload
-			if [[ -n "${branch_from}" ]]; then
-				local run_install="$( \
-					has_file_changes_between_branches_based_on_pattern "${project}" \
-					"${branch_from}" "${branch_to}" "${FILE_PATTERN_PY_REQUIRMENTS}" \
-				)"
-				local run_migrations="$( \
-					has_file_changes_between_branches_based_on_pattern "${project}" \
-					"${branch_from}" "${branch_to}" "${FILE_PATTERN_DJANGO_MIGRATIONS}" \
-				)"
-				local load_ts_templates="$( \
-					has_file_changes_between_branches_based_on_pattern "${project}" \
-					"${branch_from}" "${branch_to}" "${FILE_PATTERN_TS_TEMPLATES}" \
-				)"
-
-			else
-				local run_install='true'
-				local run_migrations='true'
-				local load_ts_templates='true'
-			fi
-
-			if [[ "${verbose_mode}" == 'true' ]]; then
-				printf "${PRINT_STYLE_OUTPUT}" "Run package install = ${run_install}"
-				printf "${PRINT_STYLE_OUTPUT}" "Run database migrations = ${run_migrations}"
-				printf "${PRINT_STYLE_OUTPUT}" "Run load_termsheet_templates = ${load_ts_templates}"
-			fi
-
-			if [[ "${project_celery_app_name}" != 'null' && -n "${branch_from}" ]]; then
-				# Celery needs to be restarted for any change in code, database or packages
-				tmux send-keys -t "${target_win_celery}.0" "C-c" "C-l" || return 1
-				tmux send-keys -t "${target_win_celery}.1" "C-c" "C-l" || return 1
-			fi
-
-			if [[ ( "${run_install}" == 'true' || "${force_reload}" == 'true' ) \
-				&& -n "${branch_from}" ]]; then
-				# The django server only needs restarting for changes in packages
-				tmux send-keys -t "${target_win_django}" "C-c" "C-l" || return 1
-			fi
-
-			# Sets up the new branch in the most effecient way, locking tmux until it succeeds
-			lock_tmux || return 1
-			tmux send-keys -t "${target_win_worker}" "${run_cmd_w_unlock} setup_project_branch " \
-				"${project} ${run_install} ${branch_to} ${run_migrations} ${load_ts_templates}" \
-				"C-m" || return 1
-			lock_tmux || return 1
-
-			if [[ "${project_celery_app_name}" != 'null' ]]; then
-				# Start up celery once branch is loaded
-				tmux send-keys -t "${target_win_celery}.0" "${run_cmd} run_django_start_celery " \
-					"${project} ${project_celery_app_name} high_priority" "C-m" || return 1
-				tmux send-keys -t "${target_win_celery}.1" "${run_cmd} run_django_start_celery " \
-					"${project} ${project_celery_app_name}" "C-m" || return 1
-			fi
-
-			if [[ "${run_install}" == 'true' || "${force_reload}" == 'true' ]]; then
-				# Start up django server if new packages were installed or if window was just opened
-				tmux send-keys -t "${target_win_django}" "${run_cmd} run_django_start_server " \
-					"${project} ${project_port}" "C-m" || return 1
-			fi
-
-			unlock_tmux || return 1
+			local tmux_win_suffixes=( "${DJANGO_TMUX_WIN_SUFFIXES[@]}" )
+			local tmux_win_split=( "${DJANGO_TMUX_WIN_SPLIT[@]}" )
+			local tmux_win_depends_on_cel=( "${DJANGO_TMUX_WIN_DEPENDS_ON_CELERY[@]}" )
+			local tmux_win_cmd=( "${DJANGO_TMUX_WIN_COMMANDS[@]}" )
+			local run_install_file_pattern="${FILE_PATTERN_PY_REQUIRMENTS}"
+			local requires_db_commands='true'
 			;;
 
 		"${PROJECT_TYPE_NODE}")
-			local win_npm_w="${project}${TMUX_WIN_NAME_NPM_WATCH_SUFFIX}"
-			local target_win_npm_w="${tmux_session_name}:${win_npm_w}"
-
-			# If there is a currently running session, check for the most effecient way to reload
-			if [[ -n "${branch_from}" ]]; then
-				local run_install="$( \
-					has_file_changes_between_branches_based_on_pattern "${project}" \
-					"${branch_from}" "${branch_to}" "${FILE_PATTERN_NODE_REQUIREMENTS}" \
-				)"
-			else
-				local run_install='true'
-			fi
-
-			if [[ "${verbose_mode}" == 'true' ]]; then
-				printf "${PRINT_STYLE_OUTPUT}" "Run package install = ${run_install}"
-			fi
-
-			if [[ "${run_install}" == 'true' || "${force_reload}" == 'true' ]]; then
-				# If node requirements have changed, npm watch needs to be restarted
-				if [[ -n "${branch_from}" ]]; then
-					tmux send-keys -t "${target_win_npm_w}" "C-c" "C-l" || return 1
-				fi
-
-				# Setups the new branch in the most effecient way possible, blocking further execution till it succeeds
-				lock_tmux || return 1
-				tmux send-keys -t "${target_win_worker}" "${run_cmd_w_unlock} " \
-					"setup_project_branch ${project} ${run_install} ${branch_to}" "C-m" || return 1
-
-				lock_tmux || return 1
-				tmux send-keys -t "${target_win_npm_w}" "${run_cmd} run_npm_run_watch ${project}" \
-					"C-m" || return 1
-				unlock_tmux || return 1
-
-			else
-				# No need to restart the npm watch if there are no changes in the node requirements
-				tmux send-keys -t "${target_win_worker}" "${run_cmd} setup_project_branch " \
-					"${project} ${run_install} ${branch_to}" "C-m" || return 1
-			fi
+			local tmux_win_suffixes=( "${NODE_TMUX_WIN_SUFFIXES[@]}" )
+			local tmux_win_split=( "${NODE_TMUX_WIN_SPLIT[@]}" )
+			local tmux_win_depends_on_cel=( "${NODE_TMUX_WIN_DEPENDS_ON_CELERY[@]}" )
+			local tmux_win_cmd=( "${NODE_TMUX_WIN_COMMANDS[@]}" )
+			local run_install_file_pattern="${FILE_PATTERN_PY_REQUIRMENTS}"
+			local requires_db_commands='false'
 			;;
 	esac
+
+	# If there is a currently running session, check for the most effecient way to reload
+	if [[ -n "${branch_from}" ]]; then
+		local run_install="$( \
+			has_file_changes_between_branches_based_on_pattern "${project}" \
+			"${branch_from}" "${branch_to}" "${run_install_file_pattern}" \
+		)"
+
+		if [[ "${requires_db_commands}" == 'true' ]]; then
+			local run_migrations="$( \
+				has_file_changes_between_branches_based_on_pattern "${project}" \
+				"${branch_from}" "${branch_to}" "${FILE_PATTERN_DJANGO_MIGRATIONS}" \
+			)"
+			local load_ts_templates="$( \
+				has_file_changes_between_branches_based_on_pattern "${project}" \
+				"${branch_from}" "${branch_to}" "${FILE_PATTERN_TS_TEMPLATES}" \
+			)"
+		fi
+
+	else
+		local run_install='true'
+
+		if [[ "${requires_db_commands}" == 'true' ]]; then
+			local run_migrations='true'
+			local load_ts_templates='true'
+		fi
+	fi
+
+	if [[ "${run_install}" == 'true' || "${force_reload}" == 'true' ]]; then
+		hard_reload='true'
+	fi
+
+	if [[ "${verbose_mode}" == 'true' ]]; then
+		printf "${PRINT_STYLE_OUTPUT}" "Run package install = ${run_install}"
+
+		if [[ "${requires_db_commands}" == 'true' ]]; then
+			printf "${PRINT_STYLE_OUTPUT}" "Run database migrations = ${run_migrations}"
+			printf "${PRINT_STYLE_OUTPUT}" "Run load_termsheet_templates = ${load_ts_templates}"
+		fi
+	fi
+
+	# If there is a running branch, stop the windows before reloading them
+	if [[ -n "${branch_from}" ]]; then
+		for tmux_win_i in "${!tmux_win_suffixes[@]}"; do
+			local win_name="${project}${tmux_win_suffixes[${tmux_win_i}]}"
+
+			if is_in_array "${win_name}" "${tmux_windows[@]}"; then
+				local target_win="${tmux_session_name}:${win_name}"
+				local depends_on_cel="${tmux_win_depends_on_cel[${tmux_win_i}]}"
+				local split_win="${tmux_win_split[${tmux_win_i}]}"
+
+				# Celery always requires a reload; other services
+				# only do so when packages need installing
+				if [[ "${hard_reload}" == 'true' || "${depends_on_cel}" == 'true' ]]; then
+					if [[ "${split_win}" == 'true' ]]; then
+						tmux send-keys -t "${target_win}.0" "C-c" "C-l" || return 1
+						tmux send-keys -t "${target_win}.1" "C-c" "C-l" || return 1
+					else
+						tmux send-keys -t "${target_win}" "C-c" "C-l" || return 1
+					fi
+				fi
+			fi
+
+		done
+	fi
+
+	# Sets up the new branch in the most effecient way, locking tmux until it succeeds
+	if [[ "${requires_db_commands}" == 'true' ]]; then
+		db_args=( "${run_migrations}" "${load_ts_templates}" )
+	fi
+
+	if is_in_array 'true' "${tmux_win_depends_on_cel[@]}" || [[ "${hard_reload}" == 'true' ]]; then
+		lock_tmux || return 1
+		tmux send-keys -t "${target_win_worker}" "${run_cmd_w_unlock} setup_project_branch " \
+			"${project} ${run_install} ${branch_to} ${db_args[*]}" "C-m" || return 1
+	else
+		tmux send-keys -t "${target_win_worker}" "${run_cmd} setup_project_branch " \
+			"${project} ${run_install} ${branch_to} ${db_args[*]}" "C-m" || return 1
+	fi
+
+	# Restart service in each window with new branch setup
+	lock_tmux || return 1
+
+	for tmux_win_i in "${!tmux_win_suffixes[@]}"; do
+		local win_name="${project}${tmux_win_suffixes[${tmux_win_i}]}"
+
+		if is_in_array "${win_name}" "${tmux_windows[@]}"; then
+			local target_win="${tmux_session_name}:${win_name}"
+			local depends_on_cel="${tmux_win_depends_on_cel[${tmux_win_i}]}"
+			local split_win="${tmux_win_split[${tmux_win_i}]}"
+			local win_cmd="${tmux_win_cmd[${tmux_win_i}]} ${project}"
+
+			# Celery always requires a reload; other services
+			# only do so when packages need installing
+			if [[ "${hard_reload}" == 'true' || "${depends_on_cel}" == 'true' ]]; then
+				if [[ "${split_win}" == 'true' ]]; then
+					# Commands for split windows are expected to allow a pane index as the last arg
+					tmux send-keys -t "${target_win}.0" "${run_cmd} ${win_cmd} 0" "C-m" || return 1
+					tmux send-keys -t "${target_win}.1" "${run_cmd} ${win_cmd} 1" "C-m" || return 1
+				else
+					tmux send-keys -t "${target_win}" "${run_cmd} ${win_cmd}" "C-m" || return 1
+				fi
+			fi
+		fi
+	done
+
+	# Free up tmux for other processes
+	unlock_tmux || return 1
 
 	return 0
 }
