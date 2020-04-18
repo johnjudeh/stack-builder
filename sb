@@ -1353,21 +1353,18 @@ function delete_tmux_windows_for_project() {
 	case "${project_type}" in
 		"${PROJECT_TYPE_DJANGO}")
 			local tmux_win_suffixes=( "${DJANGO_TMUX_WIN_SUFFIXES[@]}" )
-			local tmux_win_depends_on_celery=( "${DJANGO_TMUX_WIN_DEPENDS_ON_CELERY[@]}" )
 			;;
 
 		"${PROJECT_TYPE_NODE}")
 			local tmux_win_suffixes=( "${NODE_TMUX_WIN_SUFFIXES[@]}" )
-			local tmux_win_depends_on_celery=( "${NODE_TMUX_WIN_DEPENDS_ON_CELERY[@]}" )
 			;;
 	esac
 
 	for tmux_win_i in "${!tmux_win_suffixes[@]}"; do
 		local win_name="${project}${tmux_win_suffixes[${tmux_win_i}]}"
-		local target_win="${tmux_session_name}:${win_name}"
-		local depends_on_cel="${tmux_win_depends_on_celery[${tmux_win_i}]}"
 
 		if is_in_array "${win_name}" "${tmux_windows[@]}"; then
+			local target_win="${tmux_session_name}:${win_name}"
 			kill_tmux_window "${target_win}" || return 1
 		fi
 	done
@@ -1400,11 +1397,12 @@ function stop_tmux_windows_for_project() {
 
 	for tmux_win_i in "${!tmux_win_suffixes[@]}"; do
 		local win_name="${project}${tmux_win_suffixes[${tmux_win_i}]}"
-		local target_win="${tmux_session_name}:${win_name}"
-		local depends_on_cel="${tmux_win_depends_on_celery[${tmux_win_i}]}"
-		local split_win="${tmux_win_split[${tmux_win_i}]}"
 
 		if is_in_array "${win_name}" "${tmux_windows[@]}"; then
+			local target_win="${tmux_session_name}:${win_name}"
+			local depends_on_cel="${tmux_win_depends_on_celery[${tmux_win_i}]}"
+			local split_win="${tmux_win_split[${tmux_win_i}]}"
+
 			if [[ "${split_win}" == 'true' ]]; then
 				tmux send-keys -t "${target_win}.0" 'C-c' || return 1
 				tmux send-keys -t "${target_win}.1" 'C-c' || return 1
@@ -1447,11 +1445,12 @@ function load_env_var_in_tmux_windows_for_project() {
 
 	for tmux_win_i in "${!tmux_win_suffixes[@]}"; do
 		local win_name="${project}${tmux_win_suffixes[${tmux_win_i}]}"
-		local target_win="${tmux_session_name}:${win_name}"
-		local depends_on_cel="${tmux_win_depends_on_celery[${tmux_win_i}]}"
-		local split_win="${tmux_win_split[${tmux_win_i}]}"
 
 		if is_in_array "${win_name}" "${tmux_windows[@]}"; then
+			local target_win="${tmux_session_name}:${win_name}"
+			local depends_on_cel="${tmux_win_depends_on_celery[${tmux_win_i}]}"
+			local split_win="${tmux_win_split[${tmux_win_i}]}"
+
 			if [[ "${split_win}" == 'true' ]]; then
 				tmux send-keys -t "${target_win}.0" "${env_var_set_cmd}" 'C-m' || return 1
 				tmux send-keys -t "${target_win}.1" "${env_var_set_cmd}" 'C-m' || return 1
