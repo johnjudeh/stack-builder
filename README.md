@@ -138,7 +138,7 @@ projects in your stack and any important details about them. The format is as fo
 Each project is a JSON object with a set of required keys:
  1. `name`: a unique sequence of alphanumeric characters and underscores
  2. `shortName`: a unique sequence of alphanumeric characters and underscores
- 3. `cliChar`: a unique single character
+ 3. `char`: a unique single character
  4. `type`: either `django` or `node`
  5. `dependant`: either `true` or `false` based on whether the project requires other
 projects to work properly. In the case of Origin, only bankangle is dependant
@@ -185,7 +185,7 @@ depend on the config file. For example, a project with the following config:
 		{
 			"name": "bankangle",
 			"shortName": "ba",
-			"cliChar": "b",
+			"char": "b",
 			...
 		},
 		...
