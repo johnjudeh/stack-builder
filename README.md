@@ -51,7 +51,7 @@ Check this was successful by running the following in your terminal.
 sb --version
 ```
 
-Finally, you need to setup your configuration file. The easiest way to do this is by using the
+Next, you need to setup your configuration file. The easiest way to do this is by using the
 example file in this repo. However to learn more about how to set this up for a new project, look
 at the [Config](#configuration) section below.
 
@@ -65,6 +65,50 @@ command for a quick check.
 
 ```bash
 sb check
+```
+
+Finally, you need to set up your projects to use the environment variables defined in your config
+file. The idea here is that `sb`, your projects and any other utility can all access and amend the
+characteristics of a project. For example, if you have a django project with a `dbName` environment
+variable of `BA_DB`, then you need to set this up in your django settings file.
+
+```python
+DATABASES = {
+   'default': {
+       ...
+       'NAME': os.getenv('BA_DB'),
+       ...
+   }
+}
+```
+
+You also need to make sure that your dependent projects use the independent project urls if they
+need them. An example of how this might be used is (bankangle):
+
+```python
+KODIAK_URL = os.getenv('KOD_URL')
+
+ANGULAR_CONFIG_BASE_URL=os.getenv('OM_URL')
+
+if ANGULAR_CONFIG_BASE_URL.startswith('file://'):
+    js_files=[
+        'main.js',
+        'polyfills.js',
+        'runtime.js',
+        'scripts.js',
+        'styles.js',
+        'vendor.js',
+    ]
+    css_files = []
+else:
+    js_files = ['om-app.js']
+    css_files = ['styles.css']
+
+ANGULAR_CONFIG = AngularConf(
+    base_url=ANGULAR_CONFIG_BASE_URL,
+    js_files=js_files,
+    css_files=css_files,
+)
 ```
 
 Once that's all set up, you can find out how to use it in the [Usage](#usage) section below or
