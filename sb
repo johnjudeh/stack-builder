@@ -1177,6 +1177,23 @@ function kill_tmux_session() {
 	return 0
 }
 
+function create_tmux_session_name() {
+	# Creates tmux session name based on the globabl array variable project_branches_to[]
+	local session_name="${SCRIPT_NAME}"
+
+	for proj_i in "${cfg_git_independant_project_indices[@]}"; do
+		local branch_to="${project_branches_to[${proj_i}]}"
+
+		if [[ -n "${branch_to}" ]]; then
+			local project_short_name="${cfg_project_short_names[${proj_i}]}"
+			session_name+="${SESH_NAME_SEP}${project_short_name}=${branch_to}"
+		fi
+	done
+
+	printf "${PRINT_STYLE_OUTPUT_NO_NEW_LINE}" "${session_name}"
+	return 0
+}
+
 function get_tmux_session_name_regex() {
 	local session_name_regex="^${SCRIPT_NAME}"
 
@@ -1217,6 +1234,51 @@ function get_running_tmux_session_with_regex() {
 		return 2
 	else
 		return 1
+	fi
+}
+
+function get_branches_from_running_tmux_session_and_update_name() {
+	# If there is no tmux session running, then one is created.
+	# If there is a tmux session running, the name is updated and the global array variable
+	# project_branches_from[] is filled with the branch names running in it
+	local tmux_session_name_new="$1"
+
+	local -a tmux_session_rematch
+	local tmux_session_name_regex="$(get_tmux_session_name_regex)"
+	tmux_session_rematch=( $(get_running_tmux_session_with_regex "${tmux_session_name_regex}") )
+	local -i tmux_session_rematch_ret=$?
+
+	if (( tmux_session_rematch_ret >= 2 )); then
+		# Multiple tmux sessions were found, exiting with error
+		return 1
+
+	elif (( tmux_session_rematch_ret == 1 )); then
+		# No tmux session was found - creating new environment
+		create_tmux_session "${tmux_session_name_new}" || return 1
+
+	else
+		# Tmux session found, pulling old branch names and updating project windows
+		local tmux_session_name_old="${tmux_session_rematch[0]}"
+
+		for (( i=0; i<${#tmux_session_rematch[@]}; i++ )); do
+			local match="${tmux_session_rematch[$i]}"
+
+			if is_valid_project_for_build_command "${match}"; then
+				local project="${match}"
+				local -i project_i="$(get_project_index "${project}")"
+				local -i branch_i=$((i + 1))
+				project_branches_from[${project_i}]="${tmux_session_rematch[${branch_i}]}"
+
+				# This is for projects in the same git repository as another project and therefore
+				# track its branch
+				if is_in_array "${project_i}" "${cfg_tracked_project_indices[@]}"; then
+					local tracking_project_i="${cfg_project_tracked_by[${project_i}]}"
+					project_branches_from[${tracking_project_i}]="${project_branches_from[${project_i}]}"
+				fi
+			fi
+		done
+
+		tmux rename-session -t "${tmux_session_name_old}" "${tmux_session_name_new}" || return 1
 	fi
 }
 
@@ -1613,6 +1675,80 @@ function reload_tmux_windows_for_project() {
 	return 0
 }
 
+function build_project_in_tmux_session() {
+	# Builds a project in the appropriate tmux windows in the tmux_session_name passed.
+	# Function expects the global array variable env_vars_to_set to be accessible
+	# Independent projects set their required environment variables in env_vars_to_set
+	# and dependent projects use them in their environments
+	local -i project_i="$1"
+	local dependent="$2"
+	local branch_from="$3"
+	local branch_to="$4"
+	local tmux_session_name="$5"
+
+	local project_short_name="${cfg_project_short_names[${project_i}]}"
+	local force_reload="${dependent}"
+
+	# Either creates and builds, or deletes the tmux windows for a project
+	# depending on whether we're going to a branch or not
+	if [[ -n "${branch_to}" ]]; then
+		print_task_title "Building project '${project_short_name}' to branch '${branch_to}'"
+
+		if [[ "${verbose_mode}" == 'true' ]]; then
+			printf "${PRINT_STYLE_OUTPUT}" "Branch from = ${branch_from:-none}"
+			printf "${PRINT_STYLE_OUTPUT}" "Branch to = ${branch_to}"
+		fi
+
+		create_tmux_windows_for_project "${tmux_session_name}" "${project_short_name}" \
+			|| { task_failure; return 1; }
+
+		# Independent projects have environment variables used by dependent projects
+		if [[ "${dependent}" == 'false' ]]; then
+			if is_in_array "${project_i}" "${cfg_projects_with_url_env_var_indices[@]}"; then
+				local env_var_url="${cfg_project_url_local[${project_i}]}"
+				env_vars_to_set["${project_i}"]="${env_var_url}"
+			fi
+
+		else
+			# Stop tmux window process and add the necessary environment variables to them
+			if [[ -n "${branch_from}" ]]; then
+				stop_tmux_windows_for_project "${tmux_session_name}" "${project_short_name}" \
+					|| { task_failure; return 1; }
+			fi
+
+			for env_var_project_i in "${!env_vars_to_set[@]}"; do
+				local env_var_name="${cfg_project_url_env_var_names[${env_var_project_i}]}"
+				local env_var_value="${env_vars_to_set[${env_var_project_i}]}"
+
+				if [[ "${verbose_mode}" == 'true' ]]; then
+					printf "${PRINT_STYLE_OUTPUT}" "Setting ${env_var_name}='${env_var_value}'"
+				fi
+
+				load_env_var_in_tmux_windows_for_project "${tmux_session_name}" \
+					"${project_short_name}" "${env_var_name}" "${env_var_value}" \
+					|| { task_failure; return 1; }
+			done
+		fi
+
+		reload_tmux_windows_for_project "${tmux_session_name}" "${project_short_name}" \
+			"${branch_from}" "${branch_to}" "${force_reload}" || { task_failure; return 1; }
+
+		task_success
+	else
+		delete_tmux_windows_for_project "${tmux_session_name}" "${project_short_name}" \
+			|| return 1
+
+		if [[ "${dependent}" == 'false' ]]; then
+			if is_in_array "${project_i}" "${cfg_projects_with_url_env_var_indices[@]}"; then
+				local env_var_url="${cfg_project_url_default[${project_i}]}"
+				env_vars_to_set["${project_i}"]="${env_var_url}"
+			fi
+		fi
+	fi
+
+	return 0
+}
+
 
 ######## COMMAND-SPECIFIC FUNCTIONS ########
 
@@ -1621,13 +1757,14 @@ function handle_base_options() {
 	local next_arg="$2"
 
 	case "${option}" in
-		"${OPTION_HELP}" | "${OPTION_HELP_SHORT}")
+		"${OPTION_HELP}"|"${OPTION_HELP_SHORT}")
 			printf "${PRINT_STYLE_OUTPUT}" "${MESSAGE_USAGE_HELP}"
 			;;
 
-		"${OPTION_VERBOSE}" | "${OPTION_VERBOSE_SHORT}")
+		"${OPTION_VERBOSE}"|"${OPTION_VERBOSE_SHORT}")
 			printf "${PRINT_STYLE_OUTPUT}" "${MESSAGE_VERBOSE}"
 			verbose_mode='true'
+
 			if [[ -z "${next_arg}" ]]; then
 				raise_error "${MESSAGE_NOT_ENOUGH_ARGS}"
 				printf "${PRINT_STYLE_OUTPUT}" "${MESSAGE_USAGE_HELP}"
@@ -1693,140 +1830,28 @@ function build() {
 	# Starts tmux server only if it is not already running
 	tmux start-server || return 1
 
-	local -a tmux_session_rematch
-	local tmux_session_name_regex="$(get_tmux_session_name_regex)"
-	tmux_session_rematch=( $(get_running_tmux_session_with_regex "${tmux_session_name_regex}") )
-	local -i tmux_session_rematch_ret=$?
-	local tmux_sesh_name_new="${SCRIPT_NAME}"
-
-	for proj_i in "${cfg_git_independant_project_indices[@]}"; do
-		local branch_to="${project_branches_to[${proj_i}]}"
-
-		if [[ -n "${branch_to}" ]]; then
-			local project_short_name="${cfg_project_short_names[${proj_i}]}"
-			tmux_sesh_name_new+="${SESH_NAME_SEP}${project_short_name}=${branch_to}"
-		fi
-	done
-
-	if (( tmux_session_rematch_ret >= 2 )); then
-		# Multiple tmux sessions were found, exiting with error
-		return 1
-
-	elif (( tmux_session_rematch_ret == 1 )); then
-		# No tmux session was found - creating new environment
-		create_tmux_session "${tmux_sesh_name_new}" || return 1
-
-	else
-		# Tmux session found, pulling old branch names and updating project windows
-		local tmux_sesh_name_old="${tmux_session_rematch[0]}"
-
-		for (( i=0; i<${#tmux_session_rematch[@]}; i++ )); do
-			local match="${tmux_session_rematch[$i]}"
-			local -i after_match_index=$((i + 1))
-
-			if is_valid_project_for_build_command "${match}"; then
-				local project="${match}"
-				local -i project_i="$(get_project_index "${project}")"
-				project_branches_from[${project_i}]="${tmux_session_rematch[${after_match_index}]}"
-
-				# This is for projects in the same git repository as another project and therefore
-				# track its branch
-				if is_in_array "${project_i}" "${cfg_tracked_project_indices[@]}"; then
-					local tracking_project_i="${cfg_project_tracked_by[${project_i}]}"
-					project_branches_from[${tracking_project_i}]="${project_branches_from[${project_i}]}"
-				fi
-			fi
-		done
-
-		tmux rename-session -t "${tmux_sesh_name_old}" "${tmux_sesh_name_new}" || return 1
-	fi
-
+	local tmux_sesh_name_new="$(create_tmux_session_name)"
+	get_branches_from_running_tmux_session_and_update_name "${tmux_sesh_name_new}" || return 1
 	create_tmux_worker_window "${tmux_sesh_name_new}" || return 1
 
 	# Load independent projects first and capture env variables needed for dependent projects
 	for project_i in "${cfg_independant_project_indices[@]}"; do
-		local project_short_name="${cfg_project_short_names[${project_i}]}"
 		local branch_from="${project_branches_from[${project_i}]}"
 		local branch_to="${project_branches_to[${project_i}]}"
+		local dependent='false'
 
-
-		# TODO: Add functionality for other named urls from config
-		if [[ -n "${branch_to}" ]]; then
-			print_task_title "Building project '${project_short_name}' to branch '${branch_to}'"
-
-			if [[ "${verbose_mode}" == 'true' ]]; then
-				printf "${PRINT_STYLE_OUTPUT}" "Branch from = ${branch_from:-none}"
-				printf "${PRINT_STYLE_OUTPUT}" "Branch to = ${branch_to}"
-			fi
-
-			create_tmux_windows_for_project "${tmux_sesh_name_new}" "${project_short_name}" \
-				|| { task_failure; return 1; }
-
-			reload_tmux_windows_for_project "${tmux_sesh_name_new}" "${project_short_name}" \
-				"${branch_from}" "${branch_to}" 'false' || { task_failure; return 1; }
-
-			if is_in_array "${project_i}" "${cfg_projects_with_url_env_var_indices[@]}"; then
-				local env_var_url="${cfg_project_url_local[${project_i}]}"
-				env_vars_to_set["${project_i}"]="${env_var_url}"
-			fi
-
-			task_success
-		else
-			delete_tmux_windows_for_project "${tmux_sesh_name_new}" "${project_short_name}" \
-				|| return 1
-
-			if is_in_array "${project_i}" "${cfg_projects_with_url_env_var_indices[@]}"; then
-				local env_var_url="${cfg_project_url_default[${project_i}]}"
-				env_vars_to_set["${project_i}"]="${env_var_url}"
-			fi
-		fi
-
+		build_project_in_tmux_session "${project_i}" "${dependent}" "${branch_from}" \
+			"${branch_to}" "${tmux_sesh_name_new}" || return 1
 	done
 
 	# Load dependent projects and add env variables from the independent projects
 	for project_i in "${cfg_dependant_project_indices[@]}"; do
-		local project_short_name="${cfg_project_short_names[${project_i}]}"
 		local branch_from="${project_branches_from[${project_i}]}"
 		local branch_to="${project_branches_to[${project_i}]}"
+		local dependent='true'
 
-		if [[ -n "${branch_to}" ]]; then
-			print_task_title "Building project '${project_short_name}' to branch '${branch_to}'"
-
-			if [[ "${verbose_mode}" == 'true' ]]; then
-				printf "${PRINT_STYLE_OUTPUT}" "Branch from = ${branch_from:-none}"
-				printf "${PRINT_STYLE_OUTPUT}" "Branch to = ${branch_to}"
-			fi
-
-			create_tmux_windows_for_project "${tmux_sesh_name_new}" "${project_short_name}" \
-				|| { task_failure; return 1; }
-
-			# Stop tmux window process and add the necessary environment variables to them
-			if [[ -n "${branch_from}" ]]; then
-				stop_tmux_windows_for_project "${tmux_sesh_name_new}" "${project_short_name}" \
-					|| { task_failure; return 1; }
-			fi
-
-			for env_var_project_i in "${!env_vars_to_set[@]}"; do
-				local env_var_name="${cfg_project_url_env_var_names[${env_var_project_i}]}"
-				local env_var_value="${env_vars_to_set[${env_var_project_i}]}"
-
-				if [[ "${verbose_mode}" == 'true' ]]; then
-					printf "${PRINT_STYLE_OUTPUT}" "Setting ${env_var_name}='${env_var_value}'"
-				fi
-
-				load_env_var_in_tmux_windows_for_project "${tmux_sesh_name_new}" \
-					"${project_short_name}" "${env_var_name}" "${env_var_value}" \
-					|| { task_failure; return 1; }
-			done
-
-			reload_tmux_windows_for_project "${tmux_sesh_name_new}" "${project_short_name}" \
-				"${branch_from}" "${branch_to}" 'true' || { task_failure; return 1; }
-
-			task_success
-		else
-			delete_tmux_windows_for_project "${tmux_sesh_name_new}" "${project_short_name}" \
-				|| return 1
-		fi
+		build_project_in_tmux_session "${project_i}" "${dependent}" "${branch_from}" \
+			"${branch_to}" "${tmux_sesh_name_new}" || return 1
 	done
 
 	delete_tmux_worker_window "${tmux_sesh_name_new}" || return 1
