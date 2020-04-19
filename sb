@@ -56,19 +56,23 @@ readonly COMMAND_BUILD='build'
 readonly COMMAND_FREEZE='freeze'
 readonly COMMAND_RESTORE='restore'
 readonly COMMAND_RUN='run'
+readonly COMMAND_ATTACH='attach'
+readonly COMMAND_LIST='list'
+readonly COMMAND_RESET='reset'
 readonly COMMAND_CHECK='check'
 readonly COMMAND_SCIPT_RUN='script-run'
 readonly COMMAND_PRINT_CONFIG='config'
-readonly COMMAND_RESET='reset'
 readonly COMMANDS=(
 	"${COMMAND_BUILD}"
 	"${COMMAND_FREEZE}"
 	"${COMMAND_RESTORE}"
 	"${COMMAND_RUN}"
+	"${COMMAND_ATTACH}"
+	"${COMMAND_LIST}"
+	"${COMMAND_RESET}"
 	"${COMMAND_CHECK}"
 	"${COMMAND_SCIPT_RUN}"
 	"${COMMAND_PRINT_CONFIG}"
-	"${COMMAND_RESET}"
 )
 
 readonly OPTION_HELP='--help'
@@ -165,12 +169,18 @@ There are a number of possible commands:
 	${COMMAND_RUN}		${FM_CYAN}${SCRIPT_NAME} ${COMMAND_RUN} <project> [${OPTION_BRANCH}|${OPTION_BRANCH_SHORT} <branch>] <shell-command> [<args>]${FM_RESET}
 			Loads project environment and runs the required shell command in it
 
-	${COMMAND_CHECK}		${FM_CYAN}${SCRIPT_NAME} ${COMMAND_CHECK}${FM_RESET}
-			Checks to ensure all required environment variables are set up and script is
-			accessible on your path
+	${COMMAND_ATTACH}		${FM_CYAN}${SCRIPT_NAME} ${COMMAND_ATTACH}${FM_RESET}
+			Attach to running tmux session for project stack, if one exists
+
+	${COMMAND_LIST}		${FM_CYAN}${SCRIPT_NAME} ${COMMAND_LIST}${FM_RESET}
+			Lists the running tmux sessions
 
 	${COMMAND_RESET}		${FM_CYAN}${SCRIPT_NAME} ${COMMAND_RESET}${FM_RESET}
 			Removes tmux sessions and unlocks waiting windows
+
+	${COMMAND_CHECK}		${FM_CYAN}${SCRIPT_NAME} ${COMMAND_CHECK}${FM_RESET}
+			Checks to ensure all required environment variables are set up and script is
+			accessible on your path
 
 	${COMMAND_PRINT_CONFIG}		${FM_CYAN}${SCRIPT_NAME} ${COMMAND_PRINT_CONFIG} [<jq-filter>]${FM_RESET}
 			Prints out the config file found at ${CONFIG_FILEPATH}. All commands
@@ -1997,6 +2007,32 @@ function run() {
 	return 0
 }
 
+function attach() {
+	tmux attach -t "${SCRIPT_NAME}" || return 1
+}
+
+function list() {
+	tmux ls || return 1
+}
+
+function reset() {
+	local tmux_sessions=( $(tmux list-sessions -F "#{session_name}") )
+	local tmux_session_name_regex="$(get_tmux_session_name_regex)"
+
+	for session in "${tmux_sessions[@]}"; do
+		if [[ "${session}" =~ ${tmux_session_name_regex} ]]; then
+			kill_tmux_session "${session}"
+		fi
+	done
+
+	# This unlocks any locked channels. It's run twice with a sleep to ensure that
+	# unlocking the channel the first time doesn't trigger code that relocks the
+	# channel. This can lead to complications the next time the tool is run
+	unlock_tmux &>/dev/null
+	sleep 1
+	unlock_tmux &>/dev/null
+}
+
 function check() {
 	local set_verbose="$1"
 	local verbose='false'
@@ -2052,24 +2088,6 @@ function print_config() {
 	jq "${jq_filter}" "${CONFIG_FILEPATH}"
 }
 
-function reset() {
-	local tmux_sessions=( $(tmux list-sessions -F "#{session_name}") )
-	local tmux_session_name_regex="$(get_tmux_session_name_regex)"
-
-	for session in "${tmux_sessions[@]}"; do
-		if [[ "${session}" =~ ${tmux_session_name_regex} ]]; then
-			kill_tmux_session "${session}"
-		fi
-	done
-
-	# This unlocks any locked channels. It's run twice with a sleep to ensure that
-	# unlocking the channel the first time doesn't trigger code that relocks the
-	# channel. This can lead to complications the next time the tool is run
-	unlock_tmux &>/dev/null
-	sleep 1
-	unlock_tmux &>/dev/null
-}
-
 function script_run() {
 	$@ || raise_error "${MESSAGE_FUNCTION_RETURNED_ERROR}"
 	return 0
@@ -2094,6 +2112,15 @@ function handle_command() {
 			;;
 		"${COMMAND_RUN}")
 			check && run "$@" || return 1
+			;;
+		"${COMMAND_ATTACH}")
+			check && attach || return 1
+			;;
+		"${COMMAND_LIST}")
+			check && list || return 1
+			;;
+		"${COMMAND_RESET}")
+			check && reset || return 1
 			;;
 		"${COMMAND_CHECK}")
 			check 'true' || return 1
