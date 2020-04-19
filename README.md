@@ -136,34 +136,34 @@ projects in your stack and any important details about them. The format is as fo
 ### Projects
 
 Each project is a JSON object with a set of required keys:
-	1. `name`: a unique sequence of alphanumeric characters and underscores
-	2. `shortName`: a unique sequence of alphanumeric characters and underscores
-	3. `cliChar`: a unique single character
-	4. `type`: either `django` or `node`
-	5. `dependant`: either `true` or `false` based on whether the project requires other
-		projects to work properly. In the case of Origin, only bankangle is dependant
-	6. `port`: the port number to run on. Only required for `django` projects
-	7. `celeryAppName`: the celery app name used to run celery. Optional for projects that need
-		to run celery
-	8. `environmentVariables`: a JSON object of environment variables names rather than values
+ 1. `name`: a unique sequence of alphanumeric characters and underscores
+ 2. `shortName`: a unique sequence of alphanumeric characters and underscores
+ 3. `cliChar`: a unique single character
+ 4. `type`: either `django` or `node`
+ 5. `dependant`: either `true` or `false` based on whether the project requires other
+projects to work properly. In the case of Origin, only bankangle is dependant
+ 6. `port`: the port number to run on. Only required for `django` projects
+ 7. `celeryAppName`: the celery app name used to run celery. Optional for projects that need
+to run celery
+ 8. `environmentVariables`: a JSON object of environment variables names rather than values
 
 Each project also has a set of required environment variables. These variable names need to
 accessible and set in your own environment for the script to work.
-	1. `rootDir`: the environment variable name that points to the project directory
-	2. `virtualenvPath`: the environment variable that points to the path of your virtualenv. Required for
-		all project types
-	3. `dbName`: the environment variable name that points to the database name. Only required for
-		`django` projects
-	4. `url`: the environment variable name that points to the url the service is running at. This
-		is only required for projects that have the `urls` object detailed below
+ 1. `rootDir`: the environment variable name that points to the project directory
+ 2. `virtualenvPath`: the environment variable that points to the path of your virtualenv. Required for
+all project types
+ 3. `dbName`: the environment variable name that points to the database name. Only required for
+`django` projects
+ 4. `url`: the environment variable name that points to the url the service is running at. This
+is only required for projects that have the `urls` object detailed below
 
 Finally, each project can have an optional set of urls. This is required for any project that
 needs to be accessed by a dependant project. For example, if there is a service running at a
 specific url, these variables specify how to access it. If any urls are defined, the two below are
 required:
-	1. `local`: The url of the service when it's being run locally
-	2. `default`: The url of the project when it's not being run locally. Normally a live
-		environment
+ 1. `local`: The url of the service when it's being run locally
+ 2. `default`: The url of the project when it's not being run locally. Normally a live
+environment
 
 
 ## Usage
@@ -194,9 +194,9 @@ depend on the config file. For example, a project with the following config:
 ```
 
 Can be targetted using either of these three ways:
-	1. `sb build --bankangle <target-branch>`
-	2. `sb build --ba <target-branch>`
-	3. `sb build -b <target-branch>`
+ 1. `sb build --bankangle <target-branch>`
+ 2. `sb build --ba <target-branch>`
+ 3. `sb build -b <target-branch>`
 
 
 ## Tests
