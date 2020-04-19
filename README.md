@@ -6,10 +6,10 @@
 A command line tool to manage a stack of projects in a web application.
 
 The tool can be used for the following tasks:
-	* Build a stack of projects for specific git branches
-	* Create a local copy of a database before going into a dirty branch
-	* Restore a database to a local clean copy after leaving a dirty branch
-	* Run a command in a specific project from anywhere
+ * Build a stack of projects for specific git branches
+ * Create a local copy of a database before going into a dirty branch
+ * Restore a database to a local clean copy after leaving a dirty branch
+ * Run a command in a specific project from anywhere
 
 
 ## Installation
