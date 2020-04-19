@@ -1488,7 +1488,8 @@ function load_env_var_in_tmux_windows_for_project() {
 	local -i project_i="$(get_project_index "${project}")"
 	local project_type="${cfg_project_types[${project_i}]}"
 	local target_win_worker="${tmux_session_name}:${TMUX_WINDOW_NAME_WORKER}"
-	local env_var_set_cmd="export ${env_var_key}=${env_var_value}"
+	local tmux_unlock="&& ${SCRIPT_NAME} ${COMMAND_SCIPT_RUN} unlock_tmux"
+	local env_var_set_cmd_w_unlock="export ${env_var_key}=\"${env_var_value}\" ${tmux_unlock}"
 	local tmux_windows=( $(tmux list-windows -t "${tmux_session_name}" -F "#{window_name}") )
 
 	case "${project_type}" in
@@ -1513,16 +1514,20 @@ function load_env_var_in_tmux_windows_for_project() {
 			local depends_on_cel="${tmux_win_depends_on_celery[${tmux_win_i}]}"
 			local split_win="${tmux_win_split[${tmux_win_i}]}"
 
+			lock_tmux || return 1
+
 			if [[ "${split_win}" == 'true' ]]; then
-				tmux send-keys -t "${target_win}.0" "${env_var_set_cmd}" 'C-m' || return 1
-				tmux send-keys -t "${target_win}.1" "${env_var_set_cmd}" 'C-m' || return 1
+				tmux send-keys -t "${target_win}.0" "${env_var_set_cmd_w_unlock}" 'C-m' || return 1
+				lock_tmux || return 1
+				tmux send-keys -t "${target_win}.1" "${env_var_set_cmd_w_unlock}" 'C-m' || return 1
 			else
-				tmux send-keys -t "${target_win}" "${env_var_set_cmd}" 'C-m' || return 1
+				tmux send-keys -t "${target_win}" "${env_var_set_cmd_w_unlock}" 'C-m' || return 1
 			fi
 		fi
 	done
 
-	tmux send-keys -t "${target_win_worker}" "${env_var_set_cmd}" 'C-m' || return 1
+	lock_tmux || return 1
+	tmux send-keys -t "${target_win_worker}" "${env_var_set_cmd_w_unlock}" 'C-m' || return 1
 
 	return 0
 }
@@ -1606,6 +1611,8 @@ function reload_tmux_windows_for_project() {
 
 	# If there is a running branch, stop the windows before reloading them
 	if [[ -n "${branch_from}" ]]; then
+		lock_tmux || return 1
+
 		for tmux_win_i in "${!tmux_win_suffixes[@]}"; do
 			local win_name="${project}${tmux_win_suffixes[${tmux_win_i}]}"
 
@@ -1627,6 +1634,8 @@ function reload_tmux_windows_for_project() {
 			fi
 
 		done
+
+		unlock_tmux || return 1
 	fi
 
 	# Sets up the new branch in the most effecient way, locking tmux until it succeeds
