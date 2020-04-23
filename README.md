@@ -30,22 +30,17 @@ config file that describes your project stack.
 Make sure you have [Homebrew](https://brew.sh/) installed and run the following commands.
 
 ```bash
-brew install tmux
-brew install jq
+brew install tmux jq
 ```
 
-Once you have all the requirements installed, you need to put `sb`, the Stack Builder executable,
-onto your `PATH`. You can do this by creating a symbolic link to the `sb` script into a folder
-that your `PATH` is pointing to. A recommended directory for keeping user-specific scripts is
-`~/bin`. If this directory is not on your `PATH`, make sure to add it in your `~/.zshrc` or
-`~/.bash_prohile` depending on the kind of shell you are using. You can create the symbolic link as
-follows.
+Once you have all the requirements installed, you need to install the `sb` script. You can do this
+by running the following in your terminal.
 
 ```bash
-ln -s /absolute/path/to/stack-builder/sb ~/bin/sb
+make
 ```
 
-Check this was successful by running the following in your terminal.
+Check this was successful before continuing.
 
 ```bash
 sb --version
@@ -204,7 +199,7 @@ Can be targetted using either of these three ways:
 Not yet written.
 
 
-## Author
+## Maintainer
 
-John Judeh
+[John Judeh](mailto:john.judeh@originmarkets.com)
 
