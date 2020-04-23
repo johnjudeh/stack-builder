@@ -14,8 +14,7 @@
 
 set -eE
 trap task_failure ERR
-# trap sb_cleanup KILL
-# trap sb_cleanup INT
+trap script_cleanup INT KILL
 
 
 ######## CONSTANTS ########
@@ -820,6 +819,11 @@ function task_success() {
 	fi
 }
 
+function script_cleanup() {
+	unlock_tmux &>/dev/null || return 0
+	exit 1
+}
+
 function task_failure() {
 	if [[ "${verbose_mode}" == 'true' ]]; then
 		printf "${PRINT_STYLE_FAILURE_ISOLATED}" "FAILED"
@@ -827,6 +831,7 @@ function task_failure() {
 		printf "${PRINT_STYLE_FAILURE}" "FAILED"
 	fi
 
+	script_cleanup
 	exit 1
 }
 
@@ -2031,11 +2036,6 @@ function reset() {
 		fi
 	done
 
-	# This unlocks any locked channels. It's run twice with a sleep to ensure that
-	# unlocking the channel the first time doesn't trigger code that relocks the
-	# channel. This can lead to complications the next time the tool is run
-	unlock_tmux &>/dev/null || return 0
-	sleep 1
 	unlock_tmux &>/dev/null || return 0
 }
 
