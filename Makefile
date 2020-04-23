@@ -1,13 +1,11 @@
-CURRENT_DIR := $(shell pwd)
 INSTALL_DIR := /usr/local/bin
 SCRIPT_NAME := sb
 INSTALL_PATH := $(INSTALL_DIR)/$(SCRIPT_NAME)
-SCRIPT_PATH := $(CURRENT_DIR)/$(SCRIPT_NAME)
 
 all: install
 
 install: $(INSTALL_PATH)
 
 $(INSTALL_PATH): $(SCRIPT_NAME)
-	ln -s $(SCRIPT_PATH) $(INSTALL_PATH)
+	install $(SCRIPT_NAME) $(INSTALL_PATH)
 
