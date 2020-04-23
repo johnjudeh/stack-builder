@@ -10,6 +10,14 @@
 #	- Run a command in a specific project from anywhere
 
 
+######## SHELL OPTIONS ########
+
+set -eE
+trap task_failure ERR
+# trap sb_cleanup KILL
+# trap sb_cleanup INT
+
+
 ######## CONSTANTS ########
 
 readonly SCRIPT_NAME='sb'
@@ -101,6 +109,7 @@ readonly FREEZE_COMMAND_DEFAULT_BRANCH='master'
 readonly PROJECT_NAME_REGEX="[A-z][A-z0-9_]+"
 readonly PROJECT_CHAR_REGEX="[a-z0-9]"
 
+readonly VALID_BASH_VARNAME_REGEX='^[A-z0-9][A-z0-9_]*$'
 readonly VALID_PROJECT_OPTION_LONG="^--${PROJECT_NAME_REGEX}$"
 readonly VALID_PROJECT_OPTION_CHAR="^-${PROJECT_CHAR_REGEX}$"
 
@@ -303,12 +312,19 @@ verbose_mode='false'
 
 function get_project_index_varname() {
 	local project="$1"
+	trap - ERR
 	printf "${PRINT_STYLE_OUTPUT_NO_NEW_LINE}" "proj_i_${project}"
 }
 
 function get_project_index() {
 	local project="$1"
-	local project_index_varname="$(get_project_index_varname "${project}")"
+	trap - ERR
+
+	if [[ "${project}" =~ $VALID_BASH_VARNAME_REGEX ]]; then
+		local project_index_varname="$(get_project_index_varname "${project}")"
+	else
+		return 1
+	fi
 
 	if [[ -z "${!project_index_varname}" ]]; then
 		return 1
@@ -320,6 +336,7 @@ function get_project_index() {
 
 function get_project_from_option() {
 	local option="$1"
+	trap - ERR
 
 	if [[ "${option}" =~ ${VALID_PROJECT_OPTION_LONG} ]]; then
 		project_name="${option:2}"
@@ -341,7 +358,8 @@ function get_project_from_option() {
 
 function is_in_array() {
 	local search="$1"
-	local arr=( "${@:2}" )
+	shift
+	local arr=( "$@" )
 
 	for val in "${arr[@]}"; do
 		if [[ "${search}" == "${val}" ]]; then
@@ -401,7 +419,8 @@ function is_valid_run_command_option() {
 
 function is_valid_build_command_option() {
 	local option="$1"
-	local project="$(get_project_from_option "${option}")"
+	local project
+	project="$(get_project_from_option "${option}")" || return 1
 	is_valid_project_for_build_command "${project}"
 }
 
@@ -412,6 +431,7 @@ function raise_error() {
 
 function expand_env_variable_values() {
 	local -a env_vars=( "$@" )
+	trap - ERR
 
 	for env_var in "${env_vars[@]}"; do
 		if [[ -z "${!env_var+x}" ]]; then
@@ -427,6 +447,7 @@ function expand_env_variable_values() {
 function create_jq_filter_check_for_array_of_keys() {
 	local keys=( "$@" )
 	local jq_filter=''
+	trap - ERR
 
 	for key in "${keys[@]}"; do
 		jq_filter+="has(\"${key}\") and "
@@ -439,6 +460,7 @@ function create_jq_filter_check_for_array_of_keys() {
 function create_jq_filter_check_for_valid_value() {
 	local valid_values=( "$@" )
 	local jq_filter=''
+	trap - ERR
 
 	for val in "${valid_values[@]}"; do
 		jq_filter+="index(\"${val}\") or "
@@ -483,7 +505,7 @@ function load_config() {
 	fi
 
 	local config_json_content="$(<"${CONFIG_FILEPATH}")"
-	validate_config "${config_json_content}" || return 1
+	validate_config "${config_json_content}"
 
 	# Get static config parameters
 	cfg_projects=(
@@ -784,33 +806,35 @@ function print_task_title() {
 	local title="$1"
 
 	if [[ "${verbose_mode}" == 'true' ]]; then
-		printf "${PRINT_STYLE_TASK_TITLE}" "${title}" || return 1
+		printf "${PRINT_STYLE_TASK_TITLE}" "${title}"
 	else
-		printf "${PRINT_STYLE_TASK_TITLE_QUIET}" "${title}" || return 1
+		printf "${PRINT_STYLE_TASK_TITLE_QUIET}" "${title}"
 	fi
 }
 
 function task_success() {
 	if [[ "${verbose_mode}" == 'true' ]]; then
-		printf "${PRINT_STYLE_SUCCESS_ISOLATED}" "DONE" || return 1
+		printf "${PRINT_STYLE_SUCCESS_ISOLATED}" "DONE"
 	else
-		printf "${PRINT_STYLE_SUCCESS}" "DONE" || return 1
+		printf "${PRINT_STYLE_SUCCESS}" "DONE"
 	fi
 }
 
 function task_failure() {
 	if [[ "${verbose_mode}" == 'true' ]]; then
-		printf "${PRINT_STYLE_FAILURE_ISOLATED}" "FAILED" || return 1
+		printf "${PRINT_STYLE_FAILURE_ISOLATED}" "FAILED"
 	else
-		printf "${PRINT_STYLE_FAILURE}" "FAILED" || return 1
+		printf "${PRINT_STYLE_FAILURE}" "FAILED"
 	fi
+
+	exit 1
 }
 
 function change_dir() {
 	local dir_name="$1"
 
 	print_task_title "Changing directory to '${dir_name}'"
-	cd "${dir_name}" || { task_failure; return 1; }
+	cd "${dir_name}"
 
 	task_success
 	return 0
@@ -822,20 +846,19 @@ function checkout_git_branch() {
 	print_task_title "Checking out branch '${branch_name}'"
 
 	if [[ "${verbose_mode}" == 'true' ]]; then
-		git fetch --all || { task_failure; return 1; }
-		git checkout "${branch_name}" || { task_failure; return 1; }
+		git fetch --all
+		git checkout "${branch_name}"
 		git pull --ff-only || {
 			printf "${PRINT_STYLE_ERROR}" "${MESSAGE_GIT_PULL_FAILED}"
 			task_failure
-			return 1
 		}
 	else
-		git fetch --all &>/dev/null || { task_failure; return 1; }
-		git checkout "${branch_name}" &>/dev/null || { task_failure; return 1; }
+		git fetch --all &>/dev/null
+		git checkout "${branch_name}" &>/dev/null
 		git pull --ff-only &>/dev/null || {
+			printf "${PRINT_STYLE_LINE_BREAK}"
+			printf "${PRINT_STYLE_ERROR}" "${MESSAGE_GIsT_PULL_FAILED}"
 			task_failure
-			printf "${PRINT_STYLE_ERROR}" "${MESSAGE_GIT_PULL_FAILED}"
-			return 1
 		}
 	fi
 
@@ -854,24 +877,24 @@ function activate_code_env() {
 
 	print_task_title "${title}"
 
-	source "${env_path}/bin/activate" || { task_failure; return 1; }
+	source "${env_path}/bin/activate"
 
 	if [[ "${run_install}" == 'true'  ]]; then
 		case "${code_type}" in
 			"${CODE_TYPE_PY}")
 				if [[ "${verbose_mode}" == 'true' ]]; then
-					pip install -r requirements.txt -U || { task_failure; return 1; }
+					pip install -r requirements.txt -U
 				else
-					pip install -r requirements.txt -U &>/dev/null || { task_failure; return 1; }
+					pip install -r requirements.txt -U &>/dev/null
 				fi
 				;;
 			"${CODE_TYPE_NODE}")
 				if [[ "${verbose_mode}" == 'true' ]]; then
-					npm install || { task_failure; return 1; }
-					git checkout -- package-lock.json || { task_failure; return 1; }
+					npm install
+					git checkout -- package-lock.json
 				else
-					npm install &>/dev/null || { task_failure; return 1; }
-					git checkout -- package-lock.json &>/dev/null || { task_failure; return 1; }
+					npm install &>/dev/null
+					git checkout -- package-lock.json &>/dev/null
 				fi
 				;;
 		esac
@@ -891,14 +914,13 @@ function goto_project() {
 	local project_code_type="${cfg_project_code_types[${project_i}]}"
 	local project_virtualenv_path="${cfg_project_virtualenv_paths[${project_i}]}"
 
-	change_dir "${project_dir}" || return 1
+	change_dir "${project_dir}"
 
 	if [[ -n "${branch}" ]]; then
-		checkout_git_branch "${branch}" || return 1
+		checkout_git_branch "${branch}"
 	fi
 
-	activate_code_env "${project_code_type}" "${project_virtualenv_path}" "${run_install}" \
-		|| return 1
+	activate_code_env "${project_code_type}" "${project_virtualenv_path}" "${run_install}"
 
 	return 0
 }
@@ -908,6 +930,7 @@ function has_file_changes_between_branches_based_on_pattern() {
 	local branch_from="$2"
 	local branch_to="$3"
 	local file_pattern_to_find="$4"
+	trap - ERR
 
 	# Want to compare against the remote branch we're going to in case
 	# there is no local copy or an outdated local copy
@@ -934,7 +957,7 @@ function run_command() {
 
 	# Unlike most tasks, we want the output of this command, even in non-verbose mode
 	printf "${PRINT_STYLE_LINE_BREAK}"
-	$@ || { task_failure; return 1; }
+	$@
 
 	task_success
 	return 0
@@ -960,18 +983,16 @@ function create_clean_db() {
 
 	if [[ "${clean_db_exists}" == "1" ]]; then
 		if [[ "${verbose_mode}" == 'true' ]]; then
-			psql -c "DROP DATABASE \"${clean_db_name}\";" || { task_failure; return 1; }
+			psql -c "DROP DATABASE \"${clean_db_name}\";"
 		else
-			psql -c "DROP DATABASE \"${clean_db_name}\";" &>/dev/null || { task_failure; return 1; }
+			psql -c "DROP DATABASE \"${clean_db_name}\";" &>/dev/null
 		fi
 	fi
 
 	if [[ "${verbose_mode}" == 'true' ]]; then
-		psql -c "CREATE DATABASE \"${clean_db_name}\" WITH TEMPLATE \"${db_name}\";" \
-			|| { task_failure; return 1; }
+		psql -c "CREATE DATABASE \"${clean_db_name}\" WITH TEMPLATE \"${db_name}\";"
 	else
-		psql -c "CREATE DATABASE \"${clean_db_name}\" WITH TEMPLATE \"${db_name}\";" &>/dev/null \
-			|| { task_failure; return 1; }
+		psql -c "CREATE DATABASE \"${clean_db_name}\" WITH TEMPLATE \"${db_name}\";" &>/dev/null
 	fi
 
 	task_success
@@ -1005,8 +1026,8 @@ function restore_from_clean_db() {
 				FROM pg_stat_activity
 				WHERE pg_stat_activity.datname = '${db_name}'
 				AND pid <> pg_backend_pid();
-			" || { task_failure; return 1; }
-			psql -c "DROP DATABASE \"${db_name}\";" || { task_failure; return 1; }
+			"
+			psql -c "DROP DATABASE \"${db_name}\";"
 
 		else
 			psql -c "
@@ -1014,20 +1035,18 @@ function restore_from_clean_db() {
 				FROM pg_stat_activity
 				WHERE pg_stat_activity.datname = '${db_name}'
 				AND pid <> pg_backend_pid();
-			" &>/dev/null || { task_failure; return 1; }
+			" &>/dev/null
 
-			psql -c "DROP DATABASE \"${db_name}\";" &>/dev/null || { task_failure; return 1; }
+			psql -c "DROP DATABASE \"${db_name}\";" &>/dev/null
 		fi
 
 	fi
 
 	# Restore clean database to old name
 	if [[ "${verbose_mode}" == 'true' ]]; then
-		psql -c "CREATE DATABASE \"${db_name}\" WITH TEMPLATE \"${clean_db_name}\";" \
-			|| { task_failure; return 1; }
+		psql -c "CREATE DATABASE \"${db_name}\" WITH TEMPLATE \"${clean_db_name}\";"
 	else
-		psql -c "CREATE DATABASE \"${db_name}\" WITH TEMPLATE \"${clean_db_name}\";" &>/dev/null \
-			|| { task_failure; return 1; }
+		psql -c "CREATE DATABASE \"${db_name}\" WITH TEMPLATE \"${clean_db_name}\";" &>/dev/null
 	fi
 
 	task_success
@@ -1037,10 +1056,9 @@ function restore_from_clean_db() {
 		print_task_title "Deleting clean database '${clean_db_name}' after successful restore"
 
 		if [[ "${verbose_mode}" == 'true' ]]; then
-			psql -c "DROP DATABASE \"${clean_db_name}\";" || { task_failure; return 1; }
+			psql -c "DROP DATABASE \"${clean_db_name}\";"
 		else
-			psql -c "DROP DATABASE \"${clean_db_name}\";" &> /dev/null \
-				|| { task_failure; return 1; }
+			psql -c "DROP DATABASE \"${clean_db_name}\";" &>/dev/null
 		fi
 
 		task_success
@@ -1053,9 +1071,9 @@ function django_migrate_db() {
 	print_task_title 'Django migrate database'
 
 	if [[ "${verbose_mode}" == 'true' ]]; then
-		python manage.py migrate || { task_failure; return 1; }
+		python manage.py migrate
 	else
-		python manage.py migrate &>/dev/null || { task_failure; return 1; }
+		python manage.py migrate &>/dev/null
 	fi
 
 	task_success
@@ -1089,10 +1107,9 @@ function load_termsheet_templates() {
 	print_task_title 'Loading termsheet templates'
 
 	if [[ "${verbose_mode}" == 'true' ]]; then
-		python manage.py load_termsheet_templates --noinput || { task_failure; return 1; }
+		python manage.py load_termsheet_templates --noinput
 	else
-		python manage.py load_termsheet_templates --noinput &>/dev/null \
-			|| { task_failure; return 1; }
+		python manage.py load_termsheet_templates --noinput &>/dev/null
 	fi
 
 	task_success
@@ -1101,7 +1118,7 @@ function load_termsheet_templates() {
 
 function npm_run_watch() {
 	printf "${PRINT_STYLE_TASK_TITLE}" 'Starting npm watch'
-	npm run watch || return 1
+	npm run watch
 }
 
 function setup_project_branch() {
@@ -1112,7 +1129,7 @@ function setup_project_branch() {
 	local -i project_i="$(get_project_index "${project}")"
 	local project_type="${cfg_project_types[${project_i}]}"
 
-	goto_project "${project}" "${run_install}" "${branch}" || return 1
+	goto_project "${project}" "${run_install}" "${branch}"
 
 	if [[ "${project_type}" == "${PROJECT_TYPE_DJANGO}" ]]; then
 		# These arguments are only required for django projects
@@ -1121,13 +1138,13 @@ function setup_project_branch() {
 		local project_requires_load_ts_templates="${cfg_project_requires_load_termsheet_templates[${project_i}]}"
 
 		if [[ "${run_migrations}" == 'true' ]]; then
-			django_migrate_db || return 1
+			django_migrate_db
 		fi
 
 		if [[ "${project_requires_load_ts_templates}" == 'true' \
 			&& "${load_ts_templates}" == 'true' ]]; then
 
-			load_termsheet_templates || return 1
+			load_termsheet_templates
 		fi
 	fi
 
@@ -1141,8 +1158,8 @@ function run_django_start_server() {
 	local project_celery_app_name="${cfg_project_celery_app_names[${project_i}]}"
 	local project_port="${cfg_project_ports[${project_i}]}"
 
-	goto_project "${project}" 'false' || return 1
-	django_start_server "${project_port}" || return 1
+	goto_project "${project}" 'false'
+	django_start_server "${project_port}"
 }
 
 function run_django_start_celery() {
@@ -1152,14 +1169,14 @@ function run_django_start_celery() {
 	local -i project_i="$(get_project_index "${project}")"
 	local project_celery_app_name="${cfg_project_celery_app_names[${project_i}]}"
 
-	goto_project "${project}" 'false' || return 1
-	django_start_celery "${project_celery_app_name}" "${priority_i}" || return 1
+	goto_project "${project}" 'false'
+	django_start_celery "${project_celery_app_name}" "${priority_i}"
 }
 
 function run_npm_run_watch() {
 	local project="$1"
-	goto_project "${project}" 'false' || return 1
-	npm_run_watch || return 1
+	goto_project "${project}" 'false'
+	npm_run_watch
 }
 
 
@@ -1170,8 +1187,7 @@ function create_tmux_session() {
 
 	print_task_title "Creating new tmux session '${session_name}'"
 
-	tmux new-session -d -s "${session_name}" -n "${TMUX_WINDOW_NAME_DEFAULT}" \
-		|| { task_failure; return 1; }
+	tmux new-session -d -s "${session_name}" -n "${TMUX_WINDOW_NAME_DEFAULT}"
 
 	task_success
 	return 0
@@ -1181,7 +1197,7 @@ function kill_tmux_session() {
 	local session_name="$1"
 	print_task_title "Killing tmux session '${session_name}'"
 
-	tmux kill-session -t "${session}" || { task_failure; return 1; }
+	tmux kill-session -t "${session}"
 
 	task_success
 	return 0
@@ -1206,6 +1222,7 @@ function create_tmux_session_name() {
 
 function get_tmux_session_name_regex() {
 	local session_name_regex="^${SCRIPT_NAME}"
+	trap - ERR
 
 	# Dynamically builds regex pattern based on projects in config
 	for proj_i in "${cfg_git_independant_project_indices[@]}"; do
@@ -1218,33 +1235,18 @@ function get_tmux_session_name_regex() {
 	printf "${PRINT_STYLE_OUTPUT_NO_NEW_LINE}" "${session_name_regex}"
 }
 
-function get_running_tmux_session_with_regex() {
+function get_running_tmux_sessions_with_regex() {
 	local session_name_regex="$1"
 	local tmux_sessions=( $(tmux list-sessions -F "#{session_name}") )
-	local matched_session_running='false'
-	local -i num_of_matched_sessions=0
+	trap - ERR
 
 	for session in "${tmux_sessions[@]}"; do
 		if [[ "${session}" =~ ${session_name_regex} ]]; then
-			local matched_session_running='true'
-			(( num_of_matched_sessions++ ))
-
-			if (( num_of_matched_sessions > 1 )); then
-				raise_error "${MESSAGE_MULTIPLE_RUNNING_TMUX_SESSIONS} ${num_of_matched_sessions}"
-			fi
+			printf "${PRINT_STYLE_OUTPUT}" "${session}"
 		fi
 	done
 
-	if [[ "${matched_session_running}" == 'true' ]] && (( num_of_matched_sessions == 1 )); then
-		for match in "${BASH_REMATCH[@]}"; do
-			printf "${PRINT_STYLE_OUTPUT}" "${match}"
-		done
-		return 0
-	elif [[ "${matched_session_running}" == 'true' ]]; then
-		return 2
-	else
-		return 1
-	fi
+	return 0
 }
 
 function get_branches_from_running_tmux_session_and_update_name() {
@@ -1253,43 +1255,51 @@ function get_branches_from_running_tmux_session_and_update_name() {
 	# project_branches_from[] is filled with the branch names running in it
 	local tmux_session_name_new="$1"
 
-	local -a tmux_session_rematch
 	local tmux_session_name_regex="$(get_tmux_session_name_regex)"
-	tmux_session_rematch=( $(get_running_tmux_session_with_regex "${tmux_session_name_regex}") )
-	local -i tmux_session_rematch_ret=$?
+	local -a tmux_matched_sessions=(
+		$(get_running_tmux_sessions_with_regex "${tmux_session_name_regex}")
+	)
+	local -i num_of_matched_sessions="${#tmux_matched_sessions[@]}"
 
-	if (( tmux_session_rematch_ret >= 2 )); then
-		# Multiple tmux sessions were found, exiting with error
+	if (( num_of_matched_sessions > 1 )); then
+		raise_error "${MESSAGE_MULTIPLE_RUNNING_TMUX_SESSIONS} ${num_of_matched_sessions}"
 		return 1
 
-	elif (( tmux_session_rematch_ret == 1 )); then
-		# No tmux session was found - creating new environment
-		create_tmux_session "${tmux_session_name_new}" || return 1
+	elif (( num_of_matched_sessions == 0 )); then
+		create_tmux_session "${tmux_session_name_new}"
 
 	else
-		# Tmux session found, pulling old branch names and updating project windows
-		local tmux_session_name_old="${tmux_session_rematch[0]}"
+		# Tmux session found, pulling old branch names from it
+		local tmux_session_name_old="${tmux_matched_sessions[0]}"
 
-		for (( i=0; i<${#tmux_session_rematch[@]}; i++ )); do
-			local match="${tmux_session_rematch[$i]}"
+		if [[ "${tmux_session_name_old}" =~ ${tmux_session_name_regex} ]]; then
 
-			if is_valid_project_for_build_command "${match}"; then
-				local project="${match}"
-				local -i project_i="$(get_project_index "${project}")"
-				local -i branch_i=$((i + 1))
-				project_branches_from[${project_i}]="${tmux_session_rematch[${branch_i}]}"
+			for i in "${!BASH_REMATCH[@]}"; do
+				local match="${BASH_REMATCH[${i}]}"
 
-				# This is for projects in the same git repository as another project and therefore
-				# track its branch
-				if is_in_array "${project_i}" "${cfg_tracked_project_indices[@]}"; then
-					local tracking_project_i="${cfg_project_tracked_by[${project_i}]}"
-					project_branches_from[${tracking_project_i}]="${project_branches_from[${project_i}]}"
+				if is_valid_project_for_build_command "${match}"; then
+					local project="${match}"
+					local -i project_i="$(get_project_index "${project}")"
+					local -i branch_i=$((i + 1))
+					project_branches_from[${project_i}]="${BASH_REMATCH[${branch_i}]}"
+
+					# This is for projects in the same git repository as another project and
+					# therefore track its branch
+					if is_in_array "${project_i}" "${cfg_tracked_project_indices[@]}"; then
+						local tracking_project_i="${cfg_project_tracked_by[${project_i}]}"
+						project_branches_from[${tracking_project_i}]="${project_branches_from[${project_i}]}"
+					fi
 				fi
-			fi
-		done
+			done
 
-		tmux rename-session -t "${tmux_session_name_old}" "${tmux_session_name_new}" || return 1
+			tmux rename-session -t "${tmux_session_name_old}" "${tmux_session_name_new}"
+
+		else
+			return 1
+		fi
 	fi
+
+	return 0
 }
 
 function create_tmux_window() {
@@ -1305,10 +1315,9 @@ function create_tmux_window() {
 	fi
 
 	if [[ -n "${start_dir}" ]]; then
-		tmux new-window ${base_flags} -c "${start_dir}" -t "${window_target}" -n "${window_name}" \
-			|| return 1
+		tmux new-window ${base_flags} -c "${start_dir}" -t "${window_target}" -n "${window_name}"
 	else
-		tmux new-window ${base_flags} -t "${window_target}" -n "${window_name}" || return 1
+		tmux new-window ${base_flags} -t "${window_target}" -n "${window_name}"
 	fi
 
 	return 0
@@ -1319,9 +1328,9 @@ function split_tmux_window() {
 	local start_dir="$2"
 
 	if [[ -n "${start_dir}" ]]; then
-		tmux split-window -c "${start_dir}" -t "${window_target}" || return 1
+		tmux split-window -c "${start_dir}" -t "${window_target}"
 	else
-		tmux split-window -t "${window_target}" || return 1
+		tmux split-window -t "${window_target}"
 	fi
 
 	return 0
@@ -1329,7 +1338,7 @@ function split_tmux_window() {
 
 function kill_tmux_window() {
 	local window_target="$1"
-	tmux kill-window -t "${window_target}" || return 1
+	tmux kill-window -t "${window_target}"
 	return 0
 }
 
@@ -1339,7 +1348,7 @@ function create_tmux_worker_window() {
 
 	if ! is_in_array "${TMUX_WINDOW_NAME_WORKER}" "${tmux_windows[@]}"; then
 		create_tmux_window "${TMUX_WINDOW_NAME_WORKER}" "${tmux_session_name}:0" "" \
-			"${TMUX_CREATE_TYPE_REPLACE}" || return 1
+			"${TMUX_CREATE_TYPE_REPLACE}"
 	fi
 
 	return 0
@@ -1350,22 +1359,23 @@ function delete_tmux_worker_window() {
 	local tmux_windows=( $(tmux list-windows -t "${tmux_session_name}" -F "#{window_name}") )
 
 	if is_in_array "${TMUX_WINDOW_NAME_WORKER}" "${tmux_windows[@]}"; then
-		kill_tmux_window "${tmux_session_name}:${TMUX_WINDOW_NAME_WORKER}" || return 1
+		kill_tmux_window "${tmux_session_name}:${TMUX_WINDOW_NAME_WORKER}"
 	fi
 
 	return 0
 }
 
 function lock_tmux() {
-	tmux wait-for -L "${TMUX_DEFAULT_LOCK_CHANNEL}" || return 1
+	tmux wait-for -L "${TMUX_DEFAULT_LOCK_CHANNEL}"
 }
 
 function unlock_tmux() {
-	tmux wait-for -U "${TMUX_DEFAULT_LOCK_CHANNEL}" || return 1
+	tmux wait-for -U "${TMUX_DEFAULT_LOCK_CHANNEL}"
 }
 
 function run_command_with_tmux_unlock() {
-	$@ && unlock_tmux || return 1
+	$@
+	unlock_tmux
 }
 
 function create_tmux_windows_for_project() {
@@ -1403,10 +1413,10 @@ function create_tmux_windows_for_project() {
 			&& [[ "${depends_on_cel}" == 'false' \
 			|| ( "${depends_on_cel}" == 'true' && "${project_celery_app_name}" != 'null' ) ]]; then
 
-			create_tmux_window "${win_name}" "${end}" "${project_dir}" || return 1
+			create_tmux_window "${win_name}" "${end}" "${project_dir}"
 
 			if [[ "${split_win}" == 'true' ]]; then
-				split_tmux_window "${target_win}" "${project_dir}" || return 1
+				split_tmux_window "${target_win}" "${project_dir}"
 			fi
 		fi
 	done
@@ -1437,7 +1447,7 @@ function delete_tmux_windows_for_project() {
 
 		if is_in_array "${win_name}" "${tmux_windows[@]}"; then
 			local target_win="${tmux_session_name}:${win_name}"
-			kill_tmux_window "${target_win}" || return 1
+			kill_tmux_window "${target_win}"
 		fi
 	done
 
@@ -1476,10 +1486,10 @@ function stop_tmux_windows_for_project() {
 			local split_win="${tmux_win_split[${tmux_win_i}]}"
 
 			if [[ "${split_win}" == 'true' ]]; then
-				tmux send-keys -t "${target_win}.0" 'C-c' || return 1
-				tmux send-keys -t "${target_win}.1" 'C-c' || return 1
+				tmux send-keys -t "${target_win}.0" 'C-c'
+				tmux send-keys -t "${target_win}.1" 'C-c'
 			else
-				tmux send-keys -t "${target_win}" 'C-c' || return 1
+				tmux send-keys -t "${target_win}" 'C-c'
 			fi
 		fi
 	done
@@ -1524,20 +1534,20 @@ function load_env_var_in_tmux_windows_for_project() {
 			local depends_on_cel="${tmux_win_depends_on_celery[${tmux_win_i}]}"
 			local split_win="${tmux_win_split[${tmux_win_i}]}"
 
-			lock_tmux || return 1
+			lock_tmux
 
 			if [[ "${split_win}" == 'true' ]]; then
-				tmux send-keys -t "${target_win}.0" "${env_var_set_cmd_w_unlock}" 'C-m' || return 1
-				lock_tmux || return 1
-				tmux send-keys -t "${target_win}.1" "${env_var_set_cmd_w_unlock}" 'C-m' || return 1
+				tmux send-keys -t "${target_win}.0" "${env_var_set_cmd_w_unlock}" 'C-m'
+				lock_tmux
+				tmux send-keys -t "${target_win}.1" "${env_var_set_cmd_w_unlock}" 'C-m'
 			else
-				tmux send-keys -t "${target_win}" "${env_var_set_cmd_w_unlock}" 'C-m' || return 1
+				tmux send-keys -t "${target_win}" "${env_var_set_cmd_w_unlock}" 'C-m'
 			fi
 		fi
 	done
 
-	lock_tmux || return 1
-	tmux send-keys -t "${target_win_worker}" "${env_var_set_cmd_w_unlock}" 'C-m' || return 1
+	lock_tmux
+	tmux send-keys -t "${target_win_worker}" "${env_var_set_cmd_w_unlock}" 'C-m'
 
 	return 0
 }
@@ -1621,7 +1631,7 @@ function reload_tmux_windows_for_project() {
 
 	# If there is a running branch, stop the windows before reloading them
 	if [[ -n "${branch_from}" ]]; then
-		lock_tmux || return 1
+		lock_tmux
 
 		for tmux_win_i in "${!tmux_win_suffixes[@]}"; do
 			local win_name="${project}${tmux_win_suffixes[${tmux_win_i}]}"
@@ -1635,17 +1645,17 @@ function reload_tmux_windows_for_project() {
 				# only do so when packages need installing
 				if [[ "${hard_reload}" == 'true' || "${depends_on_cel}" == 'true' ]]; then
 					if [[ "${split_win}" == 'true' ]]; then
-						tmux send-keys -t "${target_win}.0" "C-c" "C-l" || return 1
-						tmux send-keys -t "${target_win}.1" "C-c" "C-l" || return 1
+						tmux send-keys -t "${target_win}.0" "C-c" "C-l"
+						tmux send-keys -t "${target_win}.1" "C-c" "C-l"
 					else
-						tmux send-keys -t "${target_win}" "C-c" "C-l" || return 1
+						tmux send-keys -t "${target_win}" "C-c" "C-l"
 					fi
 				fi
 			fi
 
 		done
 
-		unlock_tmux || return 1
+		unlock_tmux
 	fi
 
 	# Sets up the new branch in the most effecient way, locking tmux until it succeeds
@@ -1654,16 +1664,16 @@ function reload_tmux_windows_for_project() {
 	fi
 
 	if is_in_array 'true' "${tmux_win_depends_on_cel[@]}" || [[ "${hard_reload}" == 'true' ]]; then
-		lock_tmux || return 1
+		lock_tmux
 		tmux send-keys -t "${target_win_worker}" "${run_cmd_w_unlock} setup_project_branch " \
-			"${project} ${run_install} ${branch_to} ${db_args[*]}" "C-m" || return 1
+			"${project} ${run_install} ${branch_to} ${db_args[*]}" "C-m"
 	else
 		tmux send-keys -t "${target_win_worker}" "${run_cmd} setup_project_branch " \
-			"${project} ${run_install} ${branch_to} ${db_args[*]}" "C-m" || return 1
+			"${project} ${run_install} ${branch_to} ${db_args[*]}" "C-m"
 	fi
 
 	# Restart service in each window with new branch setup
-	lock_tmux || return 1
+	lock_tmux
 
 	for tmux_win_i in "${!tmux_win_suffixes[@]}"; do
 		local win_name="${project}${tmux_win_suffixes[${tmux_win_i}]}"
@@ -1679,17 +1689,17 @@ function reload_tmux_windows_for_project() {
 			if [[ "${hard_reload}" == 'true' || "${depends_on_cel}" == 'true' ]]; then
 				if [[ "${split_win}" == 'true' ]]; then
 					# Commands for split windows are expected to allow a pane index as the last arg
-					tmux send-keys -t "${target_win}.0" "${run_cmd} ${win_cmd} 0" "C-m" || return 1
-					tmux send-keys -t "${target_win}.1" "${run_cmd} ${win_cmd} 1" "C-m" || return 1
+					tmux send-keys -t "${target_win}.0" "${run_cmd} ${win_cmd} 0" "C-m"
+					tmux send-keys -t "${target_win}.1" "${run_cmd} ${win_cmd} 1" "C-m"
 				else
-					tmux send-keys -t "${target_win}" "${run_cmd} ${win_cmd}" "C-m" || return 1
+					tmux send-keys -t "${target_win}" "${run_cmd} ${win_cmd}" "C-m"
 				fi
 			fi
 		fi
 	done
 
 	# Free up tmux for other processes
-	unlock_tmux || return 1
+	unlock_tmux
 
 	return 0
 }
@@ -1718,8 +1728,7 @@ function build_project_in_tmux_session() {
 			printf "${PRINT_STYLE_OUTPUT}" "Branch to = ${branch_to}"
 		fi
 
-		create_tmux_windows_for_project "${tmux_session_name}" "${project_short_name}" \
-			|| { task_failure; return 1; }
+		create_tmux_windows_for_project "${tmux_session_name}" "${project_short_name}"
 
 		# Independent projects have environment variables used by dependent projects
 		if [[ "${dependent}" == 'false' ]]; then
@@ -1731,8 +1740,7 @@ function build_project_in_tmux_session() {
 		else
 			# Stop tmux window process and add the necessary environment variables to them
 			if [[ -n "${branch_from}" ]]; then
-				stop_tmux_windows_for_project "${tmux_session_name}" "${project_short_name}" \
-					|| { task_failure; return 1; }
+				stop_tmux_windows_for_project "${tmux_session_name}" "${project_short_name}"
 			fi
 
 			for env_var_project_i in "${!env_vars_to_set[@]}"; do
@@ -1744,18 +1752,16 @@ function build_project_in_tmux_session() {
 				fi
 
 				load_env_var_in_tmux_windows_for_project "${tmux_session_name}" \
-					"${project_short_name}" "${env_var_name}" "${env_var_value}" \
-					|| { task_failure; return 1; }
+					"${project_short_name}" "${env_var_name}" "${env_var_value}"
 			done
 		fi
 
 		reload_tmux_windows_for_project "${tmux_session_name}" "${project_short_name}" \
-			"${branch_from}" "${branch_to}" "${force_reload}" || { task_failure; return 1; }
+			"${branch_from}" "${branch_to}" "${force_reload}"
 
 		task_success
 	else
-		delete_tmux_windows_for_project "${tmux_session_name}" "${project_short_name}" \
-			|| return 1
+		delete_tmux_windows_for_project "${tmux_session_name}" "${project_short_name}"
 
 		if [[ "${dependent}" == 'false' ]]; then
 			if is_in_array "${project_i}" "${cfg_projects_with_url_env_var_indices[@]}"; then
@@ -1847,11 +1853,11 @@ function build() {
 	fi
 
 	# Starts tmux server only if it is not already running
-	tmux start-server || return 1
+	tmux start-server
 
 	local tmux_sesh_name_new="$(create_tmux_session_name)"
-	get_branches_from_running_tmux_session_and_update_name "${tmux_sesh_name_new}" || return 1
-	create_tmux_worker_window "${tmux_sesh_name_new}" || return 1
+	get_branches_from_running_tmux_session_and_update_name "${tmux_sesh_name_new}"
+	create_tmux_worker_window "${tmux_sesh_name_new}"
 
 	# Load independent projects first and capture env variables needed for dependent projects
 	for project_i in "${cfg_independant_project_indices[@]}"; do
@@ -1860,7 +1866,7 @@ function build() {
 		local dependent='false'
 
 		build_project_in_tmux_session "${project_i}" "${dependent}" "${branch_from}" \
-			"${branch_to}" "${tmux_sesh_name_new}" || return 1
+			"${branch_to}" "${tmux_sesh_name_new}"
 	done
 
 	# Load dependent projects and add env variables from the independent projects
@@ -1870,10 +1876,10 @@ function build() {
 		local dependent='true'
 
 		build_project_in_tmux_session "${project_i}" "${dependent}" "${branch_from}" \
-			"${branch_to}" "${tmux_sesh_name_new}" || return 1
+			"${branch_to}" "${tmux_sesh_name_new}"
 	done
 
-	delete_tmux_worker_window "${tmux_sesh_name_new}" || return 1
+	delete_tmux_worker_window "${tmux_sesh_name_new}"
 
 	return 0
 }
@@ -1912,8 +1918,8 @@ function freeze() {
 
 	if is_valid_project_for_freeze_command "${project}"; then
 		local project_db_name="${cfg_project_db_names[${project_i}]}"
-		setup_project_branch "${project}" 'true' "${branch}" 'true' 'true' || return 1
-		create_clean_db "${project_db_name}" || return 1
+		setup_project_branch "${project}" 'true' "${branch}" 'true' 'true'
+		create_clean_db "${project_db_name}"
 
 	elif is_valid_project "${project}"; then
 		raise_error "${MESSAGE_COMMAND_DOES_NOT_SUPPORT_PROJECT}: '${project}'"
@@ -1956,7 +1962,7 @@ function restore() {
 
 	if is_valid_project_for_freeze_command "${project}"; then
 		local project_db_name="${cfg_project_db_names[${project_i}]}"
-		restore_from_clean_db "${project_db_name}" "${delete_db}" || return 1
+		restore_from_clean_db "${project_db_name}" "${delete_db}"
 
 	elif is_valid_project "${project}"; then
 		raise_error "${MESSAGE_COMMAND_DOES_NOT_SUPPORT_PROJECT}: '${project}'"
@@ -1997,8 +2003,8 @@ function run() {
 	fi
 
 	if is_valid_project "${project}"; then
-		goto_project "${project}" 'false' "${branch}" || return 1
-		run_command "$@" || return 1
+		goto_project "${project}" 'false' "${branch}"
+		run_command "$@"
 	else
 		raise_error "${MESSAGE_UNKNOWN_PROJECT}: '${project}'"
 		return 1
@@ -2008,11 +2014,11 @@ function run() {
 }
 
 function attach() {
-	tmux attach -t "${SCRIPT_NAME}" || return 1
+	tmux attach -t "${SCRIPT_NAME}"
 }
 
 function list() {
-	tmux ls || return 1
+	tmux ls
 }
 
 function reset() {
@@ -2028,9 +2034,9 @@ function reset() {
 	# This unlocks any locked channels. It's run twice with a sleep to ensure that
 	# unlocking the channel the first time doesn't trigger code that relocks the
 	# channel. This can lead to complications the next time the tool is run
-	unlock_tmux &>/dev/null
+	unlock_tmux &>/dev/null || return 0
 	sleep 1
-	unlock_tmux &>/dev/null
+	unlock_tmux &>/dev/null || return 0
 }
 
 function check() {
@@ -2089,6 +2095,7 @@ function print_config() {
 }
 
 function script_run() {
+	# $@
 	$@ || raise_error "${MESSAGE_FUNCTION_RETURNED_ERROR}"
 	return 0
 }
@@ -2096,43 +2103,53 @@ function script_run() {
 function handle_command() {
 	local command="$1"
 
-	load_config || return 1
+	load_config
 
 	shift
 
 	case "${command}" in
 		"${COMMAND_BUILD}")
-			check && build "$@" || return 1
+			check
+			build "$@"
 			;;
 		"${COMMAND_FREEZE}")
-			check && freeze "$@" || return 1
+			check
+			freeze "$@"
 			;;
 		"${COMMAND_RESTORE}")
-			check && restore "$@" || return 1
+			check
+			restore "$@"
 			;;
 		"${COMMAND_RUN}")
-			check && run "$@" || return 1
+			check
+			run "$@"
 			;;
 		"${COMMAND_ATTACH}")
-			check && attach || return 1
+			check
+			attach
 			;;
 		"${COMMAND_LIST}")
-			check && list || return 1
+			check
+			list
 			;;
 		"${COMMAND_RESET}")
-			check && reset || return 1
+			check
+			reset
 			;;
 		"${COMMAND_CHECK}")
-			check 'true' || return 1
+			check 'true'
 			;;
 		"${COMMAND_PRINT_CONFIG}")
-			check && print_config "$@" || return 1
+			check
+			print_config "$@"
 			;;
 		"${COMMAND_RESET}")
-			check && reset || return 1
+			check
+			reset
 			;;
 		"${COMMAND_SCIPT_RUN}")
-			check && script_run "$@" || return 1
+			check
+			script_run "$@"
 			;;
 	esac
 
@@ -2152,11 +2169,11 @@ function main() {
 	else
 		for arg in "$@"; do
 			if is_valid_base_option "${arg}"; then
-				handle_base_options "$@" || return 1
+				handle_base_options "$@"
 				shift
 
 			elif is_valid_command "${arg}"; then
-				time handle_command "$@" || return 1
+				time handle_command "$@"
 				return 0
 
 			else
@@ -2168,4 +2185,4 @@ function main() {
 	fi
 }
 
-main "$@" || exit 1
+main "$@"
