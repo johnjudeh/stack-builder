@@ -820,7 +820,7 @@ function task_success() {
 }
 
 function script_cleanup() {
-	unlock_tmux &>/dev/null || return 0
+	unlock_tmux || return 0
 	exit 1
 }
 
@@ -832,7 +832,6 @@ function task_failure() {
 	fi
 
 	script_cleanup
-	exit 1
 }
 
 function change_dir() {
@@ -1375,7 +1374,7 @@ function lock_tmux() {
 }
 
 function unlock_tmux() {
-	tmux wait-for -U "${TMUX_DEFAULT_LOCK_CHANNEL}"
+	tmux wait-for -U "${TMUX_DEFAULT_LOCK_CHANNEL}" &>/dev/null || return 0
 }
 
 function run_command_with_tmux_unlock() {
@@ -2036,7 +2035,7 @@ function reset() {
 		fi
 	done
 
-	unlock_tmux &>/dev/null || return 0
+	unlock_tmux || return 0
 }
 
 function check() {
@@ -2095,8 +2094,10 @@ function print_config() {
 }
 
 function script_run() {
-	# $@
-	$@ || raise_error "${MESSAGE_FUNCTION_RETURNED_ERROR}"
+	$@ || {
+		raise_error "${MESSAGE_FUNCTION_RETURNED_ERROR}"
+		return 1
+	}
 	return 0
 }
 
