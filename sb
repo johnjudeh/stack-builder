@@ -994,8 +994,20 @@ function create_clean_db() {
 	fi
 
 	if [[ "${verbose_mode}" == 'true' ]]; then
+		psql -c "
+			SELECT pg_terminate_backend(pg_stat_activity.pid)
+			FROM pg_stat_activity
+			WHERE pg_stat_activity.datname = '${db_name}'
+			AND pid <> pg_backend_pid();
+		"
 		psql -c "CREATE DATABASE \"${clean_db_name}\" WITH TEMPLATE \"${db_name}\";"
 	else
+		psql -c "
+			SELECT pg_terminate_backend(pg_stat_activity.pid)
+			FROM pg_stat_activity
+			WHERE pg_stat_activity.datname = '${db_name}'
+			AND pid <> pg_backend_pid();
+		" &>/dev/null
 		psql -c "CREATE DATABASE \"${clean_db_name}\" WITH TEMPLATE \"${db_name}\";" &>/dev/null
 	fi
 
