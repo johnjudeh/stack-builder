@@ -268,7 +268,7 @@ readonly -a NODE_TMUX_WIN_COMMANDS=(
 	"run_npm_run_watch"
 )
 
-readonly FILE_PATTERN_PY_REQUIRMENTS='*requirements*'
+readonly FILE_PATTERN_PY_REQUIREMENTS='*requirements*'
 readonly FILE_PATTERN_NODE_REQUIREMENTS='*package.json*'
 readonly FILE_PATTERN_DJANGO_MIGRATIONS='*migrations*'
 readonly FILE_PATTERN_TS_TEMPLATES='*fixtures/termsheet_templates*'
@@ -1591,7 +1591,7 @@ function reload_tmux_windows_for_project() {
 			local tmux_win_split=( "${DJANGO_TMUX_WIN_SPLIT[@]}" )
 			local tmux_win_depends_on_cel=( "${DJANGO_TMUX_WIN_DEPENDS_ON_CELERY[@]}" )
 			local tmux_win_cmd=( "${DJANGO_TMUX_WIN_COMMANDS[@]}" )
-			local run_install_file_pattern="${FILE_PATTERN_PY_REQUIRMENTS}"
+			local run_install_file_pattern="${FILE_PATTERN_PY_REQUIREMENTS}"
 			local requires_db_commands='true'
 			;;
 
@@ -1600,7 +1600,7 @@ function reload_tmux_windows_for_project() {
 			local tmux_win_split=( "${NODE_TMUX_WIN_SPLIT[@]}" )
 			local tmux_win_depends_on_cel=( "${NODE_TMUX_WIN_DEPENDS_ON_CELERY[@]}" )
 			local tmux_win_cmd=( "${NODE_TMUX_WIN_COMMANDS[@]}" )
-			local run_install_file_pattern="${FILE_PATTERN_PY_REQUIRMENTS}"
+			local run_install_file_pattern="${FILE_PATTERN_NODE_REQUIREMENTS}"
 			local requires_db_commands='false'
 			;;
 	esac
